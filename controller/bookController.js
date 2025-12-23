@@ -4,13 +4,13 @@ import { Chapter } from "../models/chapter.model.js";
 import User from "../models/user.models.js";
 export const createBook = async (req, res) => {
   try {
-    const { title, author, description,visibility } = req.body;
+    const { title, author, description, visibility } = req.body;
 
     const book = await Book.create({
       title,
       author,
       description,
-      visibility
+      visibility,
     });
 
     res.status(201).json(book);
@@ -22,26 +22,30 @@ export const createBook = async (req, res) => {
 export const createChapter = async (req, res) => {
   try {
     const { title, content, chapterNumber, bookId } = req.body;
+    const book = await Book.findById(bookId);
+    if (book) {
+      if (book.author.toString() !== req.userId) {
+        return res.status(403).json({ msg: "You are not authorised" });
+      }
+      const chaptercheck = await Chapter.findOne({ chapterNumber });
 
-    if (chapter.author.toString() !== req.userId) {
-      return res
-        .status(403)
-        .json({ msg: "You are not allowed to delete this chapter" });
+      if (!chaptercheck) {
+        const chapter = await Chapter.create({
+          title,
+          content,
+          chapterNumber,
+          book: bookId,
+        });
+        await Book.findByIdAndUpdate(
+          bookId,
+          { $push: { chapters: chapter._id } },
+          { new: true }
+        );
+        res.status(201).json(chapter);
+      }
+      res.status(201).json({ msg: "chapter already exists" });
     }
-    const chapter = await Chapter.create({
-      title,
-      content,
-      chapterNumber,
-      book: bookId,
-    });
-
-    await Book.findByIdAndUpdate(
-      bookId,
-      { $push: { chapters: chapter._id } },
-      { new: true }
-    );
-
-    res.status(201).json(chapter);
+    res.status(201).json({ msg: "book may be deleted recently" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -75,7 +79,7 @@ export const editChapter = async (req, res) => {
 
 export const deleteChapter = async (req, res) => {
   try {
-    const { bookId,chapterId } = req.params;
+    const { bookId, chapterId } = req.params;
 
     const chapter = await Chapter.findById(chapterId);
     if (chapter.author.toString() !== req.userId) {
@@ -179,7 +183,7 @@ export const updateBook = async (req, res) => {
         title,
         author,
         description,
-         visibility
+        visibility,
       },
       { new: true, runValidators: true }
     );
@@ -232,7 +236,8 @@ export async function addPhoto(req, res) {
   }
 }
 
-export const loadBooksOfUser = async (req, res) => {//copied
+export const loadBooksOfUser = async (req, res) => {
+  //copied
   try {
     const { lastId, visibility, title, onlyMine, bookmarked } = req.query;
 
@@ -264,32 +269,26 @@ export const loadBooksOfUser = async (req, res) => {//copied
           scripts: [],
           nextCursor: null,
         });
-      }   //  Filter only bookmarked scripts
-            filter._id = { $in: user.bookmarksBook };
-          }
-      
-          //  Cursor Pagination (applies to all cases)
-          if (lastId) {
-            filter._id = { ...(filter._id || {}), $lt: lastId };
-          }
-      
-          const books = await Book.find(filter)
-            .sort({ _id: -1 })
-            .limit(10);
-      
-          res.json({
-            success: true,
-            books,
-            nextCursor:
-              books.length > 0 ? books[books.length - 1]._id : null,
-          });
-        } catch (err) {
-          res.status(500).json({ error: err.message });
-        }
-      };
-      
+      } //  Filter only bookmarked scripts
+      filter._id = { $in: user.bookmarksBook };
+    }
 
+    //  Cursor Pagination (applies to all cases)
+    if (lastId) {
+      filter._id = { ...(filter._id || {}), $lt: lastId };
+    }
 
+    const books = await Book.find(filter).sort({ _id: -1 }).limit(10);
+
+    res.json({
+      success: true,
+      books,
+      nextCursor: books.length > 0 ? books[books.length - 1]._id : null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
 
 export const searchBookById = async (req, res) => {
   try {
@@ -315,28 +314,36 @@ export const searchBookById = async (req, res) => {
   }
 };
 
-export const bookmarkBook = async (req,res) => {
-    try {
-        const bookId = req.params.id;
-        const userid = req.userId;
-        const script = await Book.findById(bookId);
-        if(!script) return res.status(404).json({message:'Post not found', success:false});
-        
-        const user = await User.findById(userid);
-        if(user.bookmarks.includes(script._id)){//actual way of checking references
-            // already bookmarked -> remove from the bookmark
-            await user.updateOne({$pull:{bookmarksBooks:script._id}});
-            await user.save();
-            return res.status(200).json({type:'unsaved', message:'Post removed from bookmark', success:true});
+export const bookmarkBook = async (req, res) => {
+  try {
+    const bookId = req.params.id;
+    const userid = req.userId;
+    const script = await Book.findById(bookId);
+    if (!script)
+      return res
+        .status(404)
+        .json({ message: "Post not found", success: false });
 
-        }else{
-            // bookmark krna pdega
-            await user.updateOne({$addToSet:{bookmarksBooks:script._id}});
-            await user.save();
-            return res.status(200).json({type:'saved', message:'Post bookmarked', success:true});
-        }
-
-    } catch (error) {
-        console.log(error);
+    const user = await User.findById(userid);
+    if (user.bookmarks.includes(script._id)) {
+      //actual way of checking references
+      // already bookmarked -> remove from the bookmark
+      await user.updateOne({ $pull: { bookmarksBooks: script._id } });
+      await user.save();
+      return res.status(200).json({
+        type: "unsaved",
+        message: "Post removed from bookmark",
+        success: true,
+      });
+    } else {
+      // bookmark krna pdega
+      await user.updateOne({ $addToSet: { bookmarksBooks: script._id } });
+      await user.save();
+      return res
+        .status(200)
+        .json({ type: "saved", message: "Post bookmarked", success: true });
     }
-}
+  } catch (error) {
+    console.log(error);
+  }
+};
