@@ -1,0 +1,363 @@
+import User from "../models/user.models.js";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+import { sendmail } from "../utils/mailer.js";
+import TempUser from "../models/tempuser.models.js";
+import FollowRequest from "../models/followerRequest.models.js";
+import upload from "../utils/cloudinary.js";
+import mongoose from "mongoose";
+dotenv.config();
+
+// //signup controller
+async function signup(req, res) {
+  const { username, email, password, termAndCondition } = req.body;
+  try {
+    if (termAndCondition === true) {
+      const user = await User.findOne({ email });
+      //console.log(req.body);
+      // console.log("EMAIL:", email);
+      if (user) {
+        return res
+          .status(400)
+          .json({ msg: "user already exist try to login test" });
+      }
+      const verificationCode = Math.floor(1000 + Math.random() * 9000);
+      const verificationCodeExpiry = new Date(Date.now() + 2 * 60 * 1000);
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+      //const passwordd = Password;
+      //newUser = new TempUser({
+      const newUser = new TempUser({
+        username,
+        email,
+        password: hashedPassword,
+        verificationCode,
+        verificationCodeExpiry,
+      });
+
+      // await TempUser.Save(); learn
+      await newUser.save();
+      await sendmail({
+        to: email,
+        subject: "welcome to my project",
+        html: `<h1>Your verification code is here</h1> <p>CODE: ${verificationCode} (expire within 2 min</P>`,
+      });
+      return res.status(201).json({
+        msg: "verification code has sent ...redirecting to verification page",
+        tempUserId: newUser._id,
+      }); //can i use User ir tempUser or it will clash with my code
+    } else {
+      res.status(500).json({ click: "term and condition should be agreed" });
+    }
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+}
+
+//verify_signup controller
+async function verify_signup(req, res) {
+  const { tempUserId, verificationCode } = req.body;
+  try {
+    const tempUser = await TempUser.findById(tempUserId);
+    if (!tempUser) return res.status(400).json({ msg: "try again" });
+    if (!tempUser.verificationCode || !tempUser.verificationCodeExpiry)
+      return res.status(400).json({ msg: "try again" });
+    if (new Date() > tempUser.verificationCodeExpiry)
+      return res.status(400).json({ msg: "code expired" });
+    if (tempUser.verificationCode !== verificationCode)
+      return res.status(400).json({ msg: "invalid code" });
+    const newUser = new User({
+      name: tempUser.name,
+      email: tempUser.email,
+      password: tempUser.password,
+    });
+    await newUser.save();
+  } catch (err) {
+    console.error(err.message);
+  }
+  // await TempUser.deleteOne(tempUserId); wrong
+  //or   await TempUser.deleteOne({"_id":tempUserId});//wrong
+  // await TempUser.deleteById(tempUserId);wrong
+  await TempUser.findByIdAndDelete(tempUserId);
+  //   await TempUser.deleteOne({_id:tempUserId});or this
+}
+async function updateProfile(req, res) {
+  const { userId, isprivate } = req.body;
+  const localFilePath = req.file.path;
+
+  const imageUrl = await upload(localFilePath);
+  try {
+    if (imageUrl) {
+      //
+    }
+    await User.findByIdAndUpdate(
+      userId,
+      {
+        $set: {
+          profilepic: imageUrl,
+          // bio:bio
+        },
+        $set: {
+          isPrivate: isprivate,
+        },
+      },
+      { new: true }
+    );
+    return res.json({
+      msg: "Photo uploaded successfully",
+      filename: req.file.filename,
+      path: req.file.path,
+    });
+  } catch (err) {
+    res.json({ msg: `err${err}` });
+  }
+}
+
+async function verify_newPassword(req, res) {
+  const { username, verificationCode, newPassword } = req.body;
+  try {
+    const user = await User.findOne({ username });
+    if (!user) return res.status(400).json({ msg: "first create id" });
+    if (!user.verificationCode || !user.verificationcodeExpiry)
+      return res.status(400).json({ msg: "try again" });
+    if (new Date() > user.verificationcodeExpiry)
+      return res.status(400).json({ msg: "code expired" });
+    if (user.verificationCode !== verificationCode)
+      return res.status(400).json({ msg: "invalid code" });
+    const salt = await bcrypt.genSalt(10);
+    const Password = await bcrypt.hash(newPassword, salt);
+    await User.findOneAndUpdate(
+      username,
+      {
+        $set: {
+          password: Password,
+        },
+      },
+      { new: true }
+    );
+    await TempUser.deleteOne({ email });
+    return Response.status(200).json({ msg: "password updated try to login" });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+}
+
+//change password
+async function changePassword(req, res) {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ msg: "not registered" });
+
+    const verificationCode = Math.floor(1000 + Math.random() * 9000);
+    const verificationCodeExpiry = new Date(Data.now() + 2 * 60 * 1000);
+    user = new TempUser({
+      username: User.username,
+      email: User.email,
+      password: User.password,
+      verificationCode,
+      verificationCodeExpiry,
+    });
+
+    await TempUser.Save();
+    await sendmail({
+      to: email,
+      subject: "welcome to my project todolist",
+      html: `<h1>Your verification code for reset password is here</h1> <p>CODE: ${verificationCode} (expire within 2 min</P>`,
+    });
+    return res.status(201).json({
+      msg: "verification code has sent ...redirecting to verification page",
+      UserId: "User.username",
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+}
+//resetpassword bohi to upar likha bro
+//signin
+const signin = async (req, res) => {
+  try {
+    const { email_username, password } = req.body; //email or username
+    const user = User.findOne({ email_username });
+    if (!email_username)
+      return res.status(400).json({ msg: "first create id" });
+    const check = await bcrypt.compare(password, user.password);
+    if (!check) {
+      return res.status(400).json({ msg: "wrong credencials" });
+    }
+    const html = "<P>thx for logining again</P>";
+    await sendmail({
+      to: email,
+      subject: "WELCOME BACK",
+      html,
+    });
+    const payload = { userid: user._id };
+    jwt.sign(
+      payload,
+      process.env.JWT_SECRET,
+      { expiresIn: "4d" },
+      (err, token) => {
+        if (err) throw err;
+
+        // Set JWT in cookie
+        res.cookie("token", token, {
+          httpOnly: true, // prevents JS access matlab //cookie cannot be accessed by JavaScript i.e (document.cookie).
+          secure: process.env.NODE_ENV === "production", // true in production (HTTPS)
+          //secure: true → cookie only sent over HTTPS, not HTTP.
+          //The condition process.env.NODE_ENV === "production" ensures:
+          //When you’re in production (live site), cookies only work over HTTPS.
+          //But during development (localhost), you can still test with HTTP.
+          sameSite: "strict", // prevent CSRF
+          maxAge: 4 * 24 * 60 * 60 * 1000, // 4 days set using millisecond conversion
+        });
+        return res.status(200).json({ msg: "login successful" });
+        // return res.redirect("/home");//handle manually from front end cors may be there
+      }
+    );
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+const username = async (req, res) => {
+  try {
+    const username = req.params.username;
+    const user = await user.findOne({ username }).select("-password");
+    if (user) {
+      const follow = FollowRequest.findOne({
+        receiver: username,
+        sender: user.id,
+      });
+
+      return res.status(200).json(user, follow.status);
+    }
+    res.status(200).json({ search: "not found" });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+}; //total all follwers following profile pic will be handlled by frontend
+
+const logout = (req, res) => {
+  try {
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      sameSite: "strict", // prevent CSRF
+      maxAge: 4 * 24 * 60 * 60 * 1000,
+    });
+    return res.status(200).json({ msg: "logout successful" }); //redirect manually
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+//delete account
+const deleteUser = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const deleted = await User.findByIdAndDelete(userId);
+    if (!deleted) res.status(200).json({ msg: "user deleted" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+//const getRandomUserSuggestion = async (req, res) => {};
+
+const requestRecieved = async (req, res) => {
+  const requests = await FollowRequest.find({
+    receiver: req.params.username,
+    status: "pending",
+  }).populate("sender");
+
+  res.json(requests);
+};
+const acceptRequest = async (req, res) => {
+  const { requestId } = req.body;
+
+  const request = await FollowRequest.findById(requestId);
+
+  await User.findByIdAndUpdate(request.receiver, {
+    $push: { follower: request.sender },
+  });
+
+  await User.findByIdAndUpdate(request.sender, {
+    $push: { following: request.receiver },
+  });
+
+  request.status = "accepted";
+  await request.save();
+
+  res.json({ msg: "Follow request accepted" });
+};
+const rejectRequest = async (req, res) => {
+  const { requestId } = req.body;
+  await FollowRequest.findByIdAndDelete(requestId);
+  res.json({ msg: "Follow request rejected" });
+};
+
+const followUnfollow = async (req, res) => {
+  try {
+    const { follower } = req.userId;
+    let following = req.params.username; //jisko follow karna he
+    if ((following = follower)) {
+      return response.status(400).json({ msg: "self follow not allowed" });
+    }
+    const check = User.following.includes(following);
+    if (check)
+      await promise.all(
+        User.updateOne({ username: follower }, { $pull: { following } }),
+        User.updateOne({ username: following }, { $pull: { follower } })
+      );
+    else {
+      const user = User.findOne({ username: follower });
+      if (user.isPrivate) {
+        const requests = await FollowRequest.find({
+          receiver: req.params.userId,
+          status: "pending",
+        }).populate("sender");
+
+        res.json(requests);
+      } else {
+        await promise.all(
+          User.updateOne({ username: follower }, { $push: { following } }),
+          User.updateOne({ username: following }, { $push: { follower } })
+        );
+      }
+    }
+  } catch (err) {
+    return response.json({ msg: "server error" });
+  }
+};
+// const followerFollowingCount = async (req, res) => {
+// try{  const username = req.param.username;
+//   const user = await mongoose.findOne({ username });
+//   const following = user.following.length;
+//   const follower = user.follower.length;
+//   return  response.json({ follower,following,})
+// }
+// catch{ response.json({ msg: "server error" })
+
+//   }
+// };
+export {
+  acceptRequest,
+  rejectRequest,
+  username,
+  signup,
+  verify_signup,
+  verify_newPassword,
+  changePassword,
+  signin,
+  logout,
+  followUnfollow,
+  deleteUser,
+  updateProfile,
+  requestRecieved,
+};
