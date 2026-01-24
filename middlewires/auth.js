@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 
 const verifyUser = (req, res, next) => {
-  const token = req.cookies.token; // 👈 read from cookie
+  const token = req.cookies.token; //  read from cookie
 
   if (!token) {
     return res.redirect("/login");   //or /home

@@ -22,6 +22,7 @@ async function signup(req, res) {
           .status(400)
           .json({ msg: "user already exist try to login test" });
       }
+       if(await User.findOne({username})){ return res.json({msg:"userid already taken"})}
       const verificationCode = Math.floor(1000 + Math.random() * 9000);
       const verificationCodeExpiry = new Date(Date.now() + 2 * 60 * 1000);
       const salt = await bcrypt.genSalt(10);
@@ -92,7 +93,7 @@ async function updateProfile(req, res) {
     if (imageUrl) {
       //
     }
-    await User.findByIdAndUpdate(
+     const user =await User.findByIdAndUpdate(
       userId,
       {
         $set: {
@@ -107,49 +108,20 @@ async function updateProfile(req, res) {
     );
     return res.json({
       msg: "Photo uploaded successfully",
-      filename: req.file.filename,
-      path: req.file.path,
+      profilePic:user.profilepic
     });
   } catch (err) {
     res.json({ msg: `err${err}` });
   }
 }
 
-async function verify_newPassword(req, res) {
-  const { username, verificationCode, newPassword } = req.body;
-  try {
-    const user = await User.findOne({ username });
-    if (!user) return res.status(400).json({ msg: "first create id" });
-    if (!user.verificationCode || !user.verificationcodeExpiry)
-      return res.status(400).json({ msg: "try again" });
-    if (new Date() > user.verificationcodeExpiry)
-      return res.status(400).json({ msg: "code expired" });
-    if (user.verificationCode !== verificationCode)
-      return res.status(400).json({ msg: "invalid code" });
-    const salt = await bcrypt.genSalt(10);
-    const Password = await bcrypt.hash(newPassword, salt);
-    await User.findOneAndUpdate(
-      username,
-      {
-        $set: {
-          password: Password,
-        },
-      },
-      { new: true }
-    );
-    await TempUser.deleteOne({ email });
-    return Response.status(200).json({ msg: "password updated try to login" });
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: "Server error" });
-  }
-}
-
 //change password
 async function changePassword(req, res) {
   try {
-    const { email } = req.body;
-    const user = await User.findOne({ email });
+    const { email,_id ,newpassword} = req.body;
+    let user;
+      if(!_id) {user = await User.findOne({ email });}
+    if(!email){user=await User.findById(_id)}
     if (!user) return res.status(400).json({ msg: "not registered" });
 
     const verificationCode = Math.floor(1000 + Math.random() * 9000);
@@ -157,7 +129,7 @@ async function changePassword(req, res) {
     user = new TempUser({
       username: User.username,
       email: User.email,
-      password: User.password,
+      password: newpassword,
       verificationCode,
       verificationCodeExpiry,
     });
@@ -178,6 +150,39 @@ async function changePassword(req, res) {
   }
 }
 //resetpassword bohi to upar likha bro
+
+async function verify_newPassword(req, res) {
+  const { username, verificationCode, newPassword } = req.body;
+  try {
+    const user = await User.findOne({ username });
+    const tempUser =await User.findOne({username})
+    if (!user) return res.status(400).json({ msg: "first create id" });
+    if (!tempUser.verificationCode || !tempUser.verificationcodeExpiry)
+      return res.status(400).json({ msg: "try again" });
+    if (new Date() > tempUser.verificationcodeExpiry)
+      return res.status(400).json({ msg: "code expired" });
+    if (tempUser.verificationCode !== verificationCode)
+      return res.status(400).json({ msg: "invalid code" });
+    const salt = await bcrypt.genSalt(10);
+    const Password = await bcrypt.hash(newPassword, salt);
+    await User.findOneAndUpdate(
+      username,
+      {
+        $set: {
+          password: tempUser.password,
+        },
+      },
+      { new: true }
+    );
+    await TempUser.deleteOne({ email });
+    return Response.status(200).json({ msg: "password updated try to login" });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+}
+
+
 //signin
 const signin = async (req, res) => {
   try {
@@ -335,17 +340,6 @@ const followUnfollow = async (req, res) => {
     return response.json({ msg: "server error" });
   }
 };
-// const followerFollowingCount = async (req, res) => {
-// try{  const username = req.param.username;
-//   const user = await mongoose.findOne({ username });
-//   const following = user.following.length;
-//   const follower = user.follower.length;
-//   return  response.json({ follower,following,})
-// }
-// catch{ response.json({ msg: "server error" })
-
-//   }
-// };
 export {
   acceptRequest,
   rejectRequest,

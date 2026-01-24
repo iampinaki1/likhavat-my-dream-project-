@@ -21,13 +21,14 @@ export const createBook = async (req, res) => {
 
 export const createChapter = async (req, res) => {
   try {
-    const { title, content, chapterNumber, bookId } = req.body;
+    const { title, content, chapterNumber, bookId } = req.body;//bookid is mongooseid
     const book = await Book.findById(bookId);
     if (book) {
       if (book.author.toString() !== req.userId) {
         return res.status(403).json({ msg: "You are not authorised" });
       }
-      const chaptercheck = await Chapter.findOne({ chapterNumber });
+      const chaptercheck = await Chapter.findOne({ chapterNumber,book:bookId});
+      if(chaptercheck){return res.json({msg:"chapter already exist"})}
 
       if (!chaptercheck) {
         const chapter = await Chapter.create({
@@ -79,7 +80,7 @@ export const editChapter = async (req, res) => {
 
 export const deleteChapter = async (req, res) => {
   try {
-    const { bookId, chapterId } = req.params;
+    const { chapterId } = req.params;
 
     const chapter = await Chapter.findById(chapterId);
     if (chapter.author.toString() !== req.userId) {

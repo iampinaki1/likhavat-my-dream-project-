@@ -27,6 +27,3 @@ router.route("/profile/add").post(verifyUser, upload.single("photo"), updateProf
 router.route("/:username/followunfollow").post(verifyUser,followUnfollow);
 router.route("/:username").get(verifyUser,username);
 export default router;
-//import { verifyUser } from "../controllers/authController.js";
-// E:\projecttodolist\backend\controller\authController
-// E:\projecttodolist\backend\controller\authController.js
