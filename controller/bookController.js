@@ -348,3 +348,13 @@ export const bookmarkBook = async (req, res) => {
     console.log(error);
   }
 };
+export const deleteBook=async(req,res)=>{
+  const userid = req.userId;
+  const bookId=req.params.bookId
+  const book= await Book.findOneAndDelete({
+    _id:bookId,
+    author:userid
+  })
+  if(!book){return res.status(400).json({msg:"user is not authorised"})}
+
+}

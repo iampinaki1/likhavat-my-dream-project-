@@ -29,5 +29,7 @@ router.put("/book/:bookId/update", verifyUser, updateBook);
 router.post("/book/:id/comment", verifyUser, addCommentBook);
 router.get("/book/:id/comment", verifyUser, getCommentsOfBook); //could have used route chaining
 router.get("/book/search", verifyUser, searchBookById);
-router.post("/script/:id/bookmark", verifyUser, bookmarkBook); 
+router.post("/book/:id/bookmark", verifyUser, bookmarkBook); 
+router.delete("/book/:id",verifyUser,deleteBook)
+
 //edit request ko auto bookmark kar de ya first bookmark then request send//only his books

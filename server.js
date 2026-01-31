@@ -21,7 +21,19 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 // app.get("/health",(req,res)=>res.json({message:"working"}))
-app.get("/health", (req, res) =>
+
+// app.get("*",(req,res)=>res.json({message:"working"}))
+app.use(express.json());
+app.use(cookieParser());
+app.use(express.urlencoded({ extended: true }));
+const corsOptions = {
+  origin: "http://localhost:5173",
+  credentials: true,
+};
+app.use(cors(corsOptions));
+app.use("/api/user", userRoute);
+
+app.get("/api/health", (req, res) =>
   res.json({
     message: "working",
     status: "OK",
@@ -32,18 +44,8 @@ app.get("/health", (req, res) =>
 app.get("/", (req, res) => {
   res.send("Server is running!");
 });
-// app.get("*",(req,res)=>res.json({message:"working"}))
-app.use(express.json());
-app.use(cookieParser());
-app.use(express.urlencoded({ extended: true }));
-const corsOptions = {
-  origin: "http://localhost:5173",
-  credentials: true,
-};
-app.use(cors(corsOptions));
-app.use("/api/v1/user", userRoute);
 app.use((req, res) => {
-  res.status(404).json({ error: "no found" });
+  res.status(404).json({ error: "no route found" });
 });
 async function start() {
   try {

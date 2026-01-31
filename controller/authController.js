@@ -18,13 +18,21 @@ async function signup(req, res) {
       //console.log(req.body);
       // console.log("EMAIL:", email);
       if (user) {
+        const check = await bcrypt.compare(password, user.password);
+        if (!check || user.username != username) {
+          return res.status(400).json({
+            msg: "email already exists and password or username is wrong",
+          });
+        }
         return res
           .status(400)
           .json({ msg: "user already exist try to login test" });
       }
-       if(await User.findOne({username})){ return res.json({msg:"userid already taken"})}
+      if (await User.findOne({ username })) {
+        return res.json({ msg: "userid already taken" });
+      }
       const verificationCode = Math.floor(1000 + Math.random() * 9000);
-      const verificationCodeExpiry = new Date(Date.now() + 2 * 60 * 1000);
+      const verificationCodeExpiry = new Date(Date.now() + 10 * 60 * 1000);
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(password, salt);
       //const passwordd = Password;
@@ -70,30 +78,31 @@ async function verify_signup(req, res) {
     if (tempUser.verificationCode !== verificationCode)
       return res.status(400).json({ msg: "invalid code" });
     const newUser = new User({
-      name: tempUser.name,
+      username: tempUser.username,
       email: tempUser.email,
       password: tempUser.password,
+      termAndCondition: true,
+      isPrivate: true,
     });
     await newUser.save();
+    await TempUser.findByIdAndDelete(tempUserId);
+    return res.status(201).json({ msg: "User created successfully" });
   } catch (err) {
     console.error(err.message);
+    return res.status(500).json({ error: "Server error" });
   }
-  // await TempUser.deleteOne(tempUserId); wrong
-  //or   await TempUser.deleteOne({"_id":tempUserId});//wrong
-  // await TempUser.deleteById(tempUserId);wrong
-  await TempUser.findByIdAndDelete(tempUserId);
-  //   await TempUser.deleteOne({_id:tempUserId});or this
 }
 async function updateProfile(req, res) {
   const { userId, isprivate } = req.body;
   const localFilePath = req.file.path;
-
+  console.log(localFilePath);
   const imageUrl = await upload(localFilePath);
+  console.log(imageUrl);
   try {
     if (imageUrl) {
       //
     }
-     const user =await User.findByIdAndUpdate(
+    const user = await User.findByIdAndUpdate(
       userId,
       {
         $set: {
@@ -101,14 +110,16 @@ async function updateProfile(req, res) {
           // bio:bio
         },
         $set: {
+          profilepic: imageUrl,
           isPrivate: isprivate,
+          // bio: bio
         },
       },
-      { new: true }
+      { new: true },
     );
     return res.json({
       msg: "Photo uploaded successfully",
-      profilePic:user.profilepic
+      profilePic: user.profilepic,
     });
   } catch (err) {
     res.json({ msg: `err${err}` });
@@ -118,10 +129,14 @@ async function updateProfile(req, res) {
 //change password
 async function changePassword(req, res) {
   try {
-    const { email,_id ,newpassword} = req.body;
+    const { email, _id, newpassword } = req.body;
     let user;
-      if(!_id) {user = await User.findOne({ email });}
-    if(!email){user=await User.findById(_id)}
+    if (!_id) {
+      user = await User.findOne({ email });
+    }
+    if (!email) {
+      user = await User.findById(_id);
+    }
     if (!user) return res.status(400).json({ msg: "not registered" });
 
     const verificationCode = Math.floor(1000 + Math.random() * 9000);
@@ -155,7 +170,7 @@ async function verify_newPassword(req, res) {
   const { username, verificationCode, newPassword } = req.body;
   try {
     const user = await User.findOne({ username });
-    const tempUser =await User.findOne({username})
+    const tempUser = await User.findOne({ username });
     if (!user) return res.status(400).json({ msg: "first create id" });
     if (!tempUser.verificationCode || !tempUser.verificationcodeExpiry)
       return res.status(400).json({ msg: "try again" });
@@ -172,7 +187,7 @@ async function verify_newPassword(req, res) {
           password: tempUser.password,
         },
       },
-      { new: true }
+      { new: true },
     );
     await TempUser.deleteOne({ email });
     return Response.status(200).json({ msg: "password updated try to login" });
@@ -182,21 +197,23 @@ async function verify_newPassword(req, res) {
   }
 }
 
-
 //signin
 const signin = async (req, res) => {
   try {
     const { email_username, password } = req.body; //email or username
-    const user = User.findOne({ email_username });
+    const user = await User.findOne({
+      $or: [{ username: email_username }, { email: email_username }],
+    });
     if (!email_username)
       return res.status(400).json({ msg: "first create id" });
+    console.log(password, user?.password);
     const check = await bcrypt.compare(password, user.password);
     if (!check) {
       return res.status(400).json({ msg: "wrong credencials" });
     }
     const html = "<P>thx for logining again</P>";
     await sendmail({
-      to: email,
+      to: user.email,
       subject: "WELCOME BACK",
       html,
     });
@@ -221,7 +238,7 @@ const signin = async (req, res) => {
         });
         return res.status(200).json({ msg: "login successful" });
         // return res.redirect("/home");//handle manually from front end cors may be there
-      }
+      },
     );
   } catch (err) {
     console.error(err.message);
@@ -309,35 +326,54 @@ const rejectRequest = async (req, res) => {
 
 const followUnfollow = async (req, res) => {
   try {
-    const { follower } = req.userId;
-    let following = req.params.username; //jisko follow karna he
-    if ((following = follower)) {
-      return response.status(400).json({ msg: "self follow not allowed" });
+    const follower = req.userId;
+    let followHim = req.params.username; //jisko follow karna he
+    const userJiskoFollowKarnaHe = await User.findOne({ username: followHim });
+    const user = await User.findById(follower);
+    if (userJiskoFollowKarnaHe.username === user.username) {
+      return res.status(400).json({ msg: "self follow not allowed" });
     }
-    const check = User.following.includes(following);
+
+    // const check = user.following.includes(userJiskoFollowKarnaHe._id);
+    const check = user.following.some((id) =>
+      id.equals(userJiskoFollowKarnaHe._id),
+    );
     if (check)
-      await promise.all(
-        User.updateOne({ username: follower }, { $pull: { following } }),
-        User.updateOne({ username: following }, { $pull: { follower } })
-      );
+      await Promise.all([
+        User.updateOne(
+          { username: user.username },
+          { $pull: { following: userJiskoFollowKarnaHe._id } },
+        ),
+        User.updateOne(
+          { username: followHim },
+          { $pull: { followers: user._id } },
+        ),
+      ]);
     else {
-      const user = User.findOne({ username: follower });
-      if (user.isPrivate) {
-        const requests = await FollowRequest.find({
-          receiver: req.params.userId,
-          status: "pending",
-        }).populate("sender");
+      if (userJiskoFollowKarnaHe.isPrivate) {
+        const requests = await FollowRequest.create({
+          sender: user._id,
+          receiver: userJiskoFollowKarnaHe._id,
+          status: "pending", ///default pending he model me no need still u can write
+        });
 
         res.json(requests);
       } else {
-        await promise.all(
-          User.updateOne({ username: follower }, { $push: { following } }),
-          User.updateOne({ username: following }, { $push: { follower } })
-        );
+        await Promise.all([
+          User.updateOne(
+            { username: user.username },
+            { $push: { following: userJiskoFollowKarnaHe._id } },
+          ),
+          User.updateOne(
+            { username: followHim },
+            { $push: { followers: user._id } },
+          ),
+        ]);
+        res.json({ msg: "Followed" });
       }
     }
   } catch (err) {
-    return response.json({ msg: "server error" });
+    return res.json({ msg: `error:${err}` });
   }
 };
 export {

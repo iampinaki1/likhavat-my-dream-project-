@@ -3,9 +3,9 @@ import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
 dotenv.config();
 cloudinary.config({
-  cloud_name: process.env.cloudName,
-  api_key: process.env.apiKey,
-  api_secret: process.env.apiSecret,
+  cloud_name: process.env.CLOUD_NAME,
+  api_key: process.env.API_KEY,
+  api_secret: process.env.API_SECRET,
 });
 const upload = async (localFilePath) => {
     if(!localFilePath) return null
@@ -14,6 +14,9 @@ const upload = async (localFilePath) => {
       resource_type: "auto",
        folder: "profile-pics"
     });
+     console.log(store)
+    console.log(store?.secure_url)
+     fs.unlinkSync(localFilePath);
     return store.secure_url;
   } catch (err) {
     fs.unlinkSync(localFilePath);
