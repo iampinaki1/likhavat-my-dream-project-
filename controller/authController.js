@@ -249,7 +249,7 @@ const signin = async (req, res) => {
 const username = async (req, res) => {
   try {
     const username = req.params.username;
-    const user = await user.findOne({ username }).select("-password");
+    const user = await User.findOne({ username }).select("-password");
     if (user) {
       const follow = FollowRequest.findOne({
         receiver: username,

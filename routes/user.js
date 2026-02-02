@@ -28,7 +28,7 @@ router.route("/profile/verify-otp").post(verifyUser,verify_newPassword);
 router.route("/profile/delete").post(verifyUser,deleteUser);
 router.route("/profile/add").post(verifyUser, upload.single("photo"), updateProfile);//checked
 router.route("/:username/followunfollow").post(verifyUser,followUnfollow);//working
-router.route("/:username").get(verifyUser,username);
+router.route("/:username").get(verifyUser,username);//chal raha he
 router.route("/acceptRequest").post(verifyUser,acceptRequest);
 router.route("/rejectRequest").post(verifyUser,rejectRequest);
 router.route("/recievedRequest").get(verifyUser,requestRecieved)
