@@ -93,39 +93,38 @@ async function verify_signup(req, res) {
   }
 }
 async function updateProfile(req, res) {
-  const { userId, isprivate } = req.body;
+  const { username, isPrivate } = req.body;
+  const userId = req.userId;
   const localFilePath = req.file.path;
   console.log(localFilePath);
   const imageUrl = await upload(localFilePath);
   console.log(imageUrl);
+  const details = {};
+  if (username) {
+    details.username = username;
+  }
+  if (isPrivate !== undefined) {
+    details.isPrivate = isPrivate;
+  }
+  if (imageUrl) {
+    details.profilePic = imageUrl;
+  }
   try {
-    if (imageUrl) {
-      //
-    }
     const user = await User.findByIdAndUpdate(
       userId,
       {
-        $set: {
-          profilepic: imageUrl,
-          // bio:bio
-        },
-        $set: {
-          profilepic: imageUrl,
-          isPrivate: isprivate,
-          // bio: bio
-        },
+        $set: details,
       },
       { new: true },
     );
     return res.json({
-      msg: "Photo uploaded successfully",
+      msg: "Details uploaded successfully",
       profilePic: user.profilepic,
     });
   } catch (err) {
     res.json({ msg: `err${err}` });
   }
 }
-
 //change password
 async function changePassword(req, res) {
   try {
@@ -291,14 +290,29 @@ const deleteUser = async (req, res) => {
   }
 };
 //const getRandomUserSuggestion = async (req, res) => {};
+// const requestRecieved= async(req, res) => {
+//   console.log("DIRECT ROUTE HIT");
+//   res.json({ ok: true });
+// };
 
 const requestRecieved = async (req, res) => {
-  const requests = await FollowRequest.find({
-    receiver: req.params.username,
-    status: "pending",
-  }).populate("sender");
-
-  res.json(requests);
+  console.log("requestRecieved controller hit");
+  console.log(`${req.userId}`);
+  try {
+    console.log("requestRecieved controller hit");
+    const requests = await FollowRequest.find({
+      receiver: new mongoose.Types.ObjectId(req.userId),
+      status: "pending",
+    }).populate({
+  path: "sender",
+  select: "-password",
+});
+    console.log(`${req.userId}`);
+    return res.json(requests);
+  } catch (error) {
+    console.log(`${error}`);
+    return res.json({ msg: error });
+  }
 };
 const acceptRequest = async (req, res) => {
   const { requestId } = req.body;
@@ -354,7 +368,7 @@ const followUnfollow = async (req, res) => {
         const requests = await FollowRequest.create({
           sender: user._id,
           receiver: userJiskoFollowKarnaHe._id,
-          status: "pending", ///default pending he model me no need still u can write
+          status: "pending", ///default pending  and it not needed also he model me no need still u can write
         });
 
         res.json(requests);
@@ -376,6 +390,7 @@ const followUnfollow = async (req, res) => {
     return res.json({ msg: `error:${err}` });
   }
 };
+
 export {
   acceptRequest,
   rejectRequest,

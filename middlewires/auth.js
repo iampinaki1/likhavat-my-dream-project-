@@ -10,6 +10,7 @@ const verifyUser = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.userId = decoded.userid; //decoded ={userid:User._id}
+    console.log(`${req.userId}`)
     next();
   } catch (err) {
     console.error(err);
