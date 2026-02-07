@@ -13,7 +13,7 @@ const scriptSchema = new mongoose.Schema(
       type: [
         {
           user: { type: mongoose.Schema.Types.ObjectId, ref: "User",required:true },
-          comment: { type: string ,required:true},
+          comment: { type: String ,required:true},
         },
       ],
       default: [],

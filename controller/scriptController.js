@@ -1,11 +1,11 @@
 //it is returns with params of each script
-import { Script } from "../models/script.models.js";
+import Script from "../models/script.models.js";
 import User from "../models/user.models.js";
 import scriptVersion from "../models/scriptVersion.models.js";
 import { Comment } from "../models/comment.models.js";
 import ScriptRequestAccess from "../models/scriptAccessRequest.model.js";
 import upload from "../utils/cloudinary.js";
-import scriptVersion from "../models/scriptVersion.models.js";
+import mongoose from "mongoose";
 
 export const createNewVersion = async (req, res) => {
   try {
@@ -26,7 +26,7 @@ export const createNewVersion = async (req, res) => {
         {
           $push: { edits: Version._id },
         },
-        { new: true }
+        { new: true },
       );
     }
     //const script = await Script.findById(scriptId);
@@ -53,8 +53,9 @@ export const deleteVersion = async (req, res) => {
 };
 export const newscript = async (req, res) => {
   try {
-    const { title, description, author, genre, purpose, visibility } = res.body;
-    const script = await new Script({
+    const { title, description, genre, purpose, visibility } = req.body;
+    const author = req.userId;
+    const script = new Script({
       title,
       description,
       author,
@@ -106,7 +107,7 @@ export const updateVersion = async (req, res) => {
             editedBy: userid,
           },
         },
-        { new: true }
+        { new: true },
       );
     }
     return res.json({ msg: "saved", editedScript: edited });
@@ -158,7 +159,7 @@ export const getCommentsOfScripts = async (req, res) => {
 
     const comments = await Comment.find({ script: scriptId }).populate(
       "author",
-      "username profilePic"
+      "username profilePic",
     );
 
     if (!comments)
@@ -283,7 +284,7 @@ export async function addPhotoScript(req, res) {
             image: imageUrl,
           },
         },
-        { new: true }
+        { new: true },
       );
     }
   } catch (err) {
@@ -292,13 +293,15 @@ export async function addPhotoScript(req, res) {
 }
 export const updateScript = async (req, res) => {
   try {
-    const { scriptId } = req.params;
+    const {id} = req.query;
+   const scriptId = new mongoose.Types.ObjectId(id)
+    console.log(`${scriptId}`)
     const { title, description, author, genre, purpose, visibility } = req.body;
 
     const script = await Book.findById(scriptId);
 
     if (!script) {
-      return res.status(404).json({ msg: "Book not found" });
+      return res.status(404).json({ msg: "Script not found" });
     }
 
     if (!script.author.equals(req.userId)) {
@@ -308,7 +311,7 @@ export const updateScript = async (req, res) => {
     }
 
     const updatedScript = await Script.findByIdAndUpdate(
-      bscriptId,
+      scriptId,
       {
         title,
         description,
@@ -317,7 +320,7 @@ export const updateScript = async (req, res) => {
         purpose,
         visibility,
       },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     );
 
     res.json(updatedScript);
@@ -333,7 +336,7 @@ export const bookmarkScript = async (req, res) => {
     if (!script)
       return res
         .status(404)
-        .json({ message: "Post not found", success: false });
+        .json({ message: "Script not found", success: false });
 
     const user = await User.findById(userid);
     if (user.bookmarks.includes(script._id)) {
@@ -341,13 +344,11 @@ export const bookmarkScript = async (req, res) => {
       // already bookmarked -> remove from the bookmark
       await user.updateOne({ $pull: { bookmarksScript: script._id } });
       await user.save();
-      return res
-        .status(200)
-        .json({
-          type: "unsaved",
-          message: "Post removed from bookmark",
-          success: true,
-        });
+      return res.status(200).json({
+        type: "unsaved",
+        message: "Post removed from bookmark",
+        success: true,
+      });
     } else {
       // bookmark krna pdega
       await user.updateOne({ $addToSet: { bookmarksScript: script._id } });
@@ -362,13 +363,13 @@ export const bookmarkScript = async (req, res) => {
 };
 export const searchScriptById = async (req, res) => {
   try {
-    const { code } = req.query; // script mongoose id entered by user
-
+    const { codee } = req.query; // script mongoose id entered by user//bad me nanoid
+    const code =new mongoose.Types.ObjectId(codee)
     if (!code) {
       return res.status(400).json({ msg: "Script code is required" });
     }
 
-    const script = await Book.findById(code);
+    const script = await Script.findById(code);
 
     if (!script) {
       return res.status(404).json({ msg: "script not found" });
@@ -380,7 +381,6 @@ export const searchScriptById = async (req, res) => {
     });
   } catch (err) {
     // Invalid ObjectId format error handled here
-    res.status(500).json({ error: "Invalid script code" });
+    res.status(500).json({ error: `Invalid :${err}` });
   }
 };
-

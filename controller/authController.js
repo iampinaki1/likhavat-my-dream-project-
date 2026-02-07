@@ -441,7 +441,8 @@ const refresh = async (req, res) => {
 
     const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET_REFRESH);
 
-    const user = await User.findById(decoded.userid);
+    const user = await User.findById(decoded.userid).select("+refreshToken");;
+    console.log(`${user}  ${user.refreshToken}`)
 
     if (!user || user.refreshToken !== refreshToken) {
       return res.status(403).json({ msg: "Invalid refresh token" });
@@ -449,7 +450,7 @@ const refresh = async (req, res) => {
 
     const newAccessToken = jwt.sign(
       { userid: user._id },
-      process.env.JWT_SECRET,
+      process.env.JWT_SECRET_ACCESS,
       { expiresIn: "15m" },
     );
 

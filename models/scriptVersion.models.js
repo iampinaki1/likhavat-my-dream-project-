@@ -1,4 +1,4 @@
-// import mongoose from "mongoose";
+import mongoose from "mongoose";
 
 const scriptVersionSchema = new mongoose.Schema({
   body: { type: String, required: true },

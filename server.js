@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import userRoute from "./routes/user.js";
+import scriptRoute from './routes/script.js'
 import  {rateLimit} from "express-rate-limit"
 // import {  } from "../controllers/authController.js";
 
@@ -32,6 +33,7 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 app.use("/api/user", userRoute);
+app.use("/api/scripts", scriptRoute);
 
 app.get("/api/health", (req, res) =>
   res.json({

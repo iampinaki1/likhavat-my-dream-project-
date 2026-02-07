@@ -19,10 +19,9 @@ import {
 } from "../controller/scriptController.js"; //karege badme
 
 const router = express.Router();
-router.post("/script", verifyUser, newscript);
-router.get("/script", verifyUser, loadScriptsOfUser);
-router.get("/script/search", verifyUser, searchScriptById);
-router.put("/script/:id/update", verifyUser, updateScript);
+router.post("/script", verifyUser, newscript).get("/script", verifyUser, loadScriptsOfUser);;//tested
+router.get("/script/search", verifyUser, searchScriptById);//tested
+router.put("/script/:id/update", verifyUser, updateScript);//tested
 router.put("/script/:id/addpic", verifyUser,addPhotoScript);
 router.delete("/script/:id", verifyUser, removeScript);
 router.post("/script/:id/version", verifyUser, createNewVersion);
@@ -34,3 +33,4 @@ router.get("/script/:id/comment", verifyUser, getCommentsOfScripts);
 router.post("/script/:id/bookmark", verifyUser, bookmarkScript);
 router.post("/script/:id/accept", verifyUser, acceptRequest);
 router.post("/script/:id/reject", verifyUser, rejectRequest);
+export default router
