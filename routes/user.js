@@ -12,7 +12,8 @@ import {
   username,
   acceptRequest,
   rejectRequest,
-  requestRecieved
+  requestRecieved,
+  refresh
 } from "../controller/authController.js";
 import verifyUser from "../middlewires/auth.js"; //verifyUser=verify
 import upload from "../middlewires/multer.js";
@@ -32,5 +33,6 @@ router.route("/:username/followunfollow").post(verifyUser,followUnfollow);//work
 router.route("/acceptRequest").post(verifyUser,acceptRequest);
 router.route("/rejectRequest").post(verifyUser,rejectRequest);
 router.route("/receivedRequest").get(verifyUser,requestRecieved);//working
-router.route("/profile/:username").get(verifyUser,username);//chal raha he
+router.route("/profile/:username").get(verifyUser,username);//chal raha//  he
+router.post("/refresh", refresh);
 export default router;

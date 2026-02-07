@@ -50,7 +50,19 @@ async function signup(req, res) {
       await sendmail({
         to: email,
         subject: "welcome to my project",
-        html: `<h1>Your verification code is here</h1> <p>CODE: ${verificationCode} (expire within 2 min</P>`,
+        html: ` 
+  <h1 style="font-family: Arial, sans-serif; color: #202124;">
+    Your verification code for SIGN UP
+  </h1>
+
+  <p style="font-family: Arial, sans-serif; font-size: 14px; color: #202124;">
+    <strong>Code:</strong> ${verificationCode}
+  </p>
+
+  <p style="font-family: Arial, sans-serif; font-size: 12px; color: #5f6368;">
+    This code will expire in 2 minutes.
+  </p>
+`,
       });
       return res.status(201).json({
         msg: "verification code has sent ...redirecting to verification page",
@@ -152,7 +164,19 @@ async function changePassword(req, res) {
     await sendmail({
       to: email,
       subject: "welcome to my project todolist",
-      html: `<h1>Your verification code for reset password is here</h1> <p>CODE: ${verificationCode} (expire within 2 min</P>`,
+      html:  `
+  <h1 style="font-family: Arial, sans-serif; color: #202124;">
+    Your verification code for resetting your password
+  </h1>
+
+  <p style="font-family: Arial, sans-serif; font-size: 14px; color: #202124;">
+    <strong>Code:</strong> ${verificationCode}
+  </p>
+
+  <p style="font-family: Arial, sans-serif; font-size: 12px; color: #5f6368;">
+    This code will expire in 2 minutes.
+  </p>
+`,
     });
     return res.status(201).json({
       msg: "verification code has sent ...redirecting to verification page",
@@ -200,45 +224,54 @@ async function verify_newPassword(req, res) {
 const signin = async (req, res) => {
   try {
     const { email_username, password } = req.body; //email or username
+    if (!email_username || !password) {
+      return res.status(400).json({ msg: "Missing credentials" });
+    }
     const user = await User.findOne({
       $or: [{ username: email_username }, { email: email_username }],
     });
-    if (!email_username)
-      return res.status(400).json({ msg: "first create id" });
+    if (!user) return res.status(400).json({ msg: "first create id" });
     console.log(password, user?.password);
     const check = await bcrypt.compare(password, user.password);
     if (!check) {
       return res.status(400).json({ msg: "wrong credencials" });
     }
-    const html = "<P>thx for logining again</P>";
+    const payload = { userid: user._id };
+    const accessToken = jwt.sign(payload, process.env.JWT_SECRET_ACCESS, {
+      expiresIn: "15m",
+    });
+    const refreshToken = jwt.sign(payload, process.env.JWT_SECRET_REFRESH, {
+      expiresIn: "4d",
+    });
+    user.refreshToken = refreshToken;
+    await user.save();
+    res.cookie("token", accessToken, {
+      //access
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 15 * 60 * 1000,
+    });
+
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 4 * 24 * 60 * 60 * 1000,
+    });
+    const html = `
+<p style="font-family: Arial, sans-serif; font-size: 14px; color: #202124;">
+  Thanks for logging in again! We’re glad to have you back.
+</p>
+`;
     await sendmail({
       to: user.email,
       subject: "WELCOME BACK",
       html,
     });
-    const payload = { userid: user._id };
-    jwt.sign(
-      payload,
-      process.env.JWT_SECRET,
-      { expiresIn: "4d" },
-      (err, token) => {
-        if (err) throw err;
-
-        // Set JWT in cookie
-        res.cookie("token", token, {
-          httpOnly: true, // prevents JS access matlab //cookie cannot be accessed by JavaScript i.e (document.cookie).
-          secure: process.env.NODE_ENV === "production", // true in production (HTTPS)
-          //secure: true → cookie only sent over HTTPS, not HTTP.
-          //The condition process.env.NODE_ENV === "production" ensures:
-          //When you’re in production (live site), cookies only work over HTTPS.
-          //But during development (localhost), you can still test with HTTP.
-          sameSite: "strict", // prevent CSRF
-          maxAge: 4 * 24 * 60 * 60 * 1000, // 4 days set using millisecond conversion
-        });
-        return res.status(200).json({ msg: "login successful" });
-        // return res.redirect("/home");//handle manually from front end cors may be there
-      },
-    );
+    return res
+      .status(200)
+      .json({ msg: "login successful", accessToken, refreshToken });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: "Server error" });
@@ -267,6 +300,13 @@ const username = async (req, res) => {
 const logout = (req, res) => {
   try {
     res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      sameSite: "strict", // prevent CSRF
+      maxAge: 15 * 60 * 1000,
+    });
+    res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
@@ -304,9 +344,9 @@ const requestRecieved = async (req, res) => {
       receiver: new mongoose.Types.ObjectId(req.userId),
       status: "pending",
     }).populate({
-  path: "sender",
-  select: "-password",
-});
+      path: "sender",
+      select: "-password",
+    });
     console.log(`${req.userId}`);
     return res.json(requests);
   } catch (error) {
@@ -390,6 +430,44 @@ const followUnfollow = async (req, res) => {
     return res.json({ msg: `error:${err}` });
   }
 };
+const refresh = async (req, res) => {
+  try {
+    const refreshToken =
+      req.cookies?.refreshToken || req.headers["x-refresh-token"];
+
+    if (!refreshToken) {
+      return res.status(401).json({ msg: "No refresh token" });
+    }
+
+    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET_REFRESH);
+
+    const user = await User.findById(decoded.userid);
+
+    if (!user || user.refreshToken !== refreshToken) {
+      return res.status(403).json({ msg: "Invalid refresh token" });
+    }
+
+    const newAccessToken = jwt.sign(
+      { userid: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" },
+    );
+
+    res.cookie("token", newAccessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 15 * 60 * 1000,
+    });
+
+    return res
+      .status(200)
+      .json({ msg: "Access token refreshed", accessToken: newAccessToken });
+  } catch (err) {
+    console.error(err);
+    return res.status(403).json({ msg: "Refresh failed" });
+  }
+};
 
 export {
   acceptRequest,
@@ -405,4 +483,5 @@ export {
   deleteUser,
   updateProfile,
   requestRecieved,
+  refresh,
 };

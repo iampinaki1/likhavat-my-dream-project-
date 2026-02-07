@@ -13,7 +13,7 @@ const userSchema = new mongoose.Schema(
     bookmarksBook: [{ type: mongoose.Schema.Types.ObjectId, ref: "Book" }],
     termAndCondition: { type: Boolean, default: false, required: true },
     isPrivate: { type: Boolean, default: true, required: true }, //only for follow all or request
-  },
+    refreshToken: {type: String,select: false}},
   { timestamp: true }
 );
 const User = mongoose.model("User", userSchema);
