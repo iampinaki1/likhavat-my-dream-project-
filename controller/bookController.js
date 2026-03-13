@@ -88,24 +88,27 @@ export const createChapter = async (req, res) => {
 export const editChapter = async (req, res) => {
   try {
     const { chapterId } = req.params;
-    const chapter = await Chapter.findById(chapterId);
-    if (chapter.author.toString() !== req.userId) {
-      //remember chapter.author is obid datatype which is different
-      return res
-        .status(403)
-        .json({ msg: "You are not allowed to delete this chapter" });
+    const { title, content } = req.body;
+    
+    const chapter = await Chapter.findById(chapterId).populate('book');
+    
+    if (!chapter) {
+      return res.status(404).json({ msg: "Chapter not found" });
     }
+    
+    // Check if user is the book author
+    const book = await Book.findById(chapter.book);
+    if (!book || book.author.toString() !== req.userId) {
+      return res.status(403).json({ msg: "You are not allowed to edit this chapter" });
+    }
+    
     const updatedChapter = await Chapter.findByIdAndUpdate(
       chapterId,
-      req.body,
+      { title, content },
       { new: true, runValidators: true }
     );
 
-    if (!updatedChapter) {
-      return res.status(404).json({ msg: "Chapter not found" });
-    }
-
-    res.json(updatedChapter);
+    res.json({ success: true, chapter: updatedChapter });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -116,13 +119,15 @@ export const deleteChapter = async (req, res) => {
     const { chapterId } = req.params;
 
     const chapter = await Chapter.findById(chapterId);
-    if (chapter.author.toString() !== req.userId) {
-      return res
-        .status(403)
-        .json({ msg: "You are not allowed to delete this chapter" });
-    }
+    
     if (!chapter) {
       return res.status(404).json({ msg: "Chapter not found" });
+    }
+    
+    // Check if user is the book author
+    const book = await Book.findById(chapter.book);
+    if (!book || book.author.toString() !== req.userId) {
+      return res.status(403).json({ msg: "You are not allowed to delete this chapter" });
     }
 
     await Book.findByIdAndUpdate(chapter.book, {
@@ -131,7 +136,7 @@ export const deleteChapter = async (req, res) => {
 
     await Chapter.findByIdAndDelete(chapterId);
 
-    res.json({ msg: "Chapter deleted successfully" });
+    res.json({ success: true, msg: "Chapter deleted successfully" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -319,7 +324,7 @@ export const loadBooksOfUser = async (req, res) => {
       if (!user || user.bookmarksBook.length === 0) {
         return res.json({
           success: true,
-          scripts: [],
+          books: [],
           nextCursor: null,
         });
       } //  Filter only bookmarked scripts
@@ -341,7 +346,7 @@ export const loadBooksOfUser = async (req, res) => {
         }
       })
       .sort({ _id: -1 })
-      .limit(10);
+      .limit(5);
 
     res.json({
       success: true,

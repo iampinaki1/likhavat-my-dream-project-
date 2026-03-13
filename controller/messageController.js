@@ -35,18 +35,6 @@ export const getMessages = async (req, res) => {
     const { userId } = req.params;
     const currentUserId = req.userId;
 
-    // Check if current user is following the other user
-    const currentUser = await User.findById(currentUserId);
-    const isFollowing = currentUser.following.includes(
-      new mongoose.Types.ObjectId(userId)
-    );
-
-    if (!isFollowing) {
-      return res.status(403).json({
-        msg: "You can only message users you are following",
-      });
-    }
-
     // Fetch all messages between the two users
     const messages = await Message.find({
       $or: [
@@ -71,18 +59,6 @@ export const sendMessage = async (req, res) => {
   try {
     const { receiverId, message } = req.body;
     const senderId = req.userId;
-
-    // Check if sender is following receiver
-    const sender = await User.findById(senderId);
-    const isFollowing = sender.following.includes(
-      new mongoose.Types.ObjectId(receiverId)
-    );
-
-    if (!isFollowing) {
-      return res.status(403).json({
-        msg: "You can only message users you are following",
-      });
-    }
 
     const newMessage = new Message({
       senderId,

@@ -21,18 +21,28 @@ export const createPoem = async (req, res) => {
     }
 };
 
-// Get all poems
+// Get all poems with pagination
 export const getPoems = async (req, res) => {
     try {
-        const { author } = req.query;
+        const { author, lastId } = req.query;
         let filter = {};
         if (author) filter.author = author;
 
+        // Cursor pagination
+        if (lastId) {
+            filter._id = { $lt: lastId };
+        }
+
         const poems = await Poem.find(filter)
             .populate("author", "username profilePic")
-            .sort({ createdAt: -1 });
+            .sort({ _id: -1 })
+            .limit(5);
 
-        res.status(200).json({ success: true, poems });
+        res.status(200).json({ 
+            success: true, 
+            poems,
+            nextCursor: poems.length > 0 ? poems[poems.length - 1]._id : null
+        });
     } catch (error) {
         res.status(500).json({ success: false, msg: error.message });
     }
@@ -52,13 +62,29 @@ export const getPoemById = async (req, res) => {
     }
 };
 
-// Load poems of specific user
+// Load poems of specific user with pagination
 export const loadPoemsOfUser = async (req, res) => {
     try {
         const userId = req.userId;
-        const poems = await Poem.find({ author: userId }).populate("author", "username profilePic").sort({ createdAt: -1 });
+        const { lastId } = req.query;
+        
+        let filter = { author: userId };
+        
+        // Cursor pagination
+        if (lastId) {
+            filter._id = { $lt: lastId };
+        }
+        
+        const poems = await Poem.find(filter)
+            .populate("author", "username profilePic")
+            .sort({ _id: -1 })
+            .limit(5);
 
-        res.status(200).json({ success: true, poems });
+        res.status(200).json({ 
+            success: true, 
+            poems,
+            nextCursor: poems.length > 0 ? poems[poems.length - 1]._id : null
+        });
     } catch (error) {
         res.status(500).json({ success: false, msg: error.message });
     }

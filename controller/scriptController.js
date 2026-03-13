@@ -9,30 +9,38 @@ import mongoose from "mongoose";
 
 export const createNewVersion = async (req, res) => {
   try {
-    const { scriptId } = req.param;
-    const { body, editedBy } = req.body;
-    const userid = req.userId;
-    const check = await Script.findOne({ _id: scriptId, allowedUser: userid });
-    const check2 = await Script.findOne({ _id: scriptId, author: userid });
-    if (check.length === 0 && !check2.length === 0) {
-      return res.status(404).json({ msg: "may be user is not verified" });
-    } else {
-      const Version = await new scriptVersion({
-        body,
-        editedBy,
-      });
-      const script = await Script.findByIdAndUpdate(
-        scriptId,
-        {
-          $push: { edits: Version._id },
-        },
-        { new: true },
-      );
+    const scriptId = req.params.id;
+    const { body } = req.body;
+    const userId = req.userId;
+    
+    // Check if user has permission (author or allowed user)
+    const script = await Script.findOne({
+      _id: scriptId,
+      $or: [
+        { author: userId },
+        { allowedUsers: userId }
+      ]
+    });
+    
+    if (!script) {
+      return res.status(403).json({ msg: "You are not authorized to create versions for this script" });
     }
-    //const script = await Script.findById(scriptId);
+    
+    // Create new version
+    const newVersion = new scriptVersion({
+      body: body || "Start writing...",
+      editedBy: userId,
+    });
+    await newVersion.save();
+    
+    // Add version to script
+    script.edits.push(newVersion._id);
+    await script.save();
+    
+    return res.status(201).json({ success: true, msg: "Version created", version: newVersion });
   } catch (error) {
-    console.log(`error:${error}`);
-    return res.status(500).json({ msg: `error :${error}` });
+    console.error("createNewVersion error:", error);
+    return res.status(500).json({ msg: `Error: ${error.message}` });
   }
 };
 export const deleteVersion = async (req, res) => {
@@ -111,27 +119,43 @@ export const removeScript = async (req, res) => {
 
 export const updateVersion = async (req, res) => {
   try {
-    const { userid, scriptId, VersionId } = req.param;
-    const { edit } = req.body;
-    const check = await Script.findOne({ _id: scriptId, allowedUser: userid });
-    const check2 = await Script.findOne({ _id: scriptId, author: userid });
-    if (check.length === 0 && !check2.length === 0) {
-      return res.status(404).json({ msg: "may be user is not verified" });
-    } else {
-      const edited = await scriptVersion.findByIdAndUpdate(
-        VersionId,
-        {
-          $set: {
-            body: edit,
-            editedBy: userid,
-          },
-        },
-        { new: true },
-      );
+    const scriptId = req.params.id;
+    const { versionId, body } = req.body;
+    const userId = req.userId;
+    
+    // Check if user has permission (author or allowed user)
+    const script = await Script.findOne({
+      _id: scriptId,
+      $or: [
+        { author: userId },
+        { allowedUsers: userId }
+      ]
+    });
+    
+    if (!script) {
+      return res.status(403).json({ msg: "You are not authorized to edit this script" });
     }
-    return res.json({ msg: "saved", editedScript: edited });
+    
+    // Update the version
+    const updatedVersion = await scriptVersion.findByIdAndUpdate(
+      versionId,
+      {
+        $set: {
+          body: body,
+          editedBy: userId,
+        },
+      },
+      { new: true }
+    );
+    
+    if (!updatedVersion) {
+      return res.status(404).json({ msg: "Version not found" });
+    }
+    
+    return res.json({ success: true, msg: "Version saved", version: updatedVersion });
   } catch (err) {
-    return res.json({ msg: "error occured" });
+    console.error("updateVersion error:", err);
+    return res.status(500).json({ msg: "Error occurred" });
   }
 };
 // const deleteVersion
@@ -277,7 +301,7 @@ export const loadScriptsOfUser = async (req, res) => {
         }
       })
       .sort({ _id: -1 })
-      .limit(10);
+      .limit(5);
 
     res.json({
       success: true,
