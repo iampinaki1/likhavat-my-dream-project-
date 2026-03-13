@@ -2,20 +2,11 @@ import mongoose from "mongoose";
 
 const scriptSchema = new mongoose.Schema(
   {
-    image:{type:String, required:true ,default:"no img"},
+    image: { type: String, required: true, default: "no img" },
     title: { type: String, required: true },
     description: { type: String, required: true },
     likes: {
       type: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-      default: [],
-    },
-    comments: {
-      type: [
-        {
-          user: { type: mongoose.Schema.Types.ObjectId, ref: "User",required:true },
-          comment: { type: String ,required:true},
-        },
-      ],
       default: [],
     },
     author: {
@@ -74,6 +65,13 @@ const scriptSchema = new mongoose.Schema(
       ref: "ScriptVersion",
       default: [],
     }, //schema with ref to model
+
+    comments: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Comment",
+      },
+    ],
   },
 
   { timestamps: true }

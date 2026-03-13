@@ -2,17 +2,17 @@ import jwt from "jsonwebtoken";
 
 const verifyUser = (req, res, next) => {
   //const token = req.cookies.token; //  read from cookie
-let token;
- if (req.cookies?.token) {
+  let token;
+  if (req.cookies?.token) {
     token = req.cookies.token;
-    
+
   }
- else if (req.headers.authorization?.startsWith("Bearer ")) {
+  else if (req.headers.authorization?.startsWith("Bearer ")) {
     token = req.headers.authorization.split(" ")[1];
   }
   console.log(`${token}`)
   if (!token) {
-    return res.json({msg:"unauthorized access denied"});   
+    return res.json({ msg: "unauthorized access denied" });
   }
 
   try {

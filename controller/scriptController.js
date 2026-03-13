@@ -1,7 +1,7 @@
 //it is returns with params of each script
 import Script from "../models/script.models.js";
-import User from "../models/user.models.js";
 import scriptVersion from "../models/scriptVersion.models.js";
+import User from "../models/user.models.js";
 import { Comment } from "../models/comment.models.js";
 import ScriptRequestAccess from "../models/scriptAccessRequest.model.js";
 import upload from "../utils/cloudinary.js";
@@ -55,15 +55,32 @@ export const newscript = async (req, res) => {
   try {
     const { title, description, genre, purpose, visibility } = req.body;
     const author = req.userId;
+
+    // Map 'private' from frontend to 'restricted' enum in the model
+    const normalizedVisibility =
+      visibility === "private" ? "restricted" : visibility || "restricted";
+
     const script = new Script({
       title,
       description,
       author,
       genre,
       purpose,
-      visibility,
+      visibility: normalizedVisibility,
     });
     await script.save();
+
+    // Initialize an empty first draft!
+    const initialVersion = new scriptVersion({
+      body: "Start writing your script here...",
+      editedBy: author,
+    });
+    await initialVersion.save();
+
+    // Bind this version to the script 
+    script.edits.push(initialVersion._id);
+    await script.save();
+
     return res.status(200).json({ msg: `script created`, script });
   } catch (error) {
     console.log(`error:${error}`);
@@ -73,20 +90,22 @@ export const newscript = async (req, res) => {
 
 export const removeScript = async (req, res) => {
   try {
-    const scriptId = req.param.scriptId;
+    const scriptId = req.params.id;
     const userid = req.userId;
-    const remove = awaitScript.findOneAndDelete({
+
+    const removed = await Script.findOneAndDelete({
       _id: scriptId,
       author: userid,
     });
-    if (remove) {
-      return res.json({ msg: "deleted" });
-    }
-    return res.json({ msg: "u r not authorised" });
 
-    //author can delete only equate author to user
+    if (!removed) {
+      return res.status(403).json({ msg: "You are not authorised to delete this script" });
+    }
+
+    return res.json({ msg: "deleted" });
   } catch (error) {
-    return res.json({ msg: "error occured" });
+    console.error("removeScript error:", error);
+    return res.status(500).json({ msg: "error occured" });
   }
 };
 
@@ -119,7 +138,7 @@ export const updateVersion = async (req, res) => {
 export const addCommentScripts = async (req, res) => {
   try {
     const scriptId = req.params.id;
-    const commentKrneWalaUserKiId = req.id;
+    const commentKrneWalaUserKiId = req.userId;
 
     const { text } = req.body;
 
@@ -133,7 +152,13 @@ export const addCommentScripts = async (req, res) => {
     const comment = await Comment.create({
       text,
       author: commentKrneWalaUserKiId,
-      script: scriptId,
+      scriptId: scriptId,
+    });
+
+    console.log("Created script comment:", {
+      id: comment._id,
+      scriptId: comment.scriptId,
+      author: comment.author,
     });
 
     await comment.populate({
@@ -142,7 +167,7 @@ export const addCommentScripts = async (req, res) => {
     });
 
     script.comments.push(comment._id);
-    await post.save();
+    await script.save(); // Fix post.save()
 
     return res.status(201).json({
       message: "Comment Added",
@@ -156,18 +181,24 @@ export const addCommentScripts = async (req, res) => {
 export const getCommentsOfScripts = async (req, res) => {
   try {
     const scriptId = req.params.id;
+    const { lastId } = req.query;
 
-    const comments = await Comment.find({ script: scriptId }).populate(
-      "author",
-      "username profilePic",
-    );
+    let filter = { scriptId: scriptId };
 
-    if (!comments)
-      return res
-        .status(404)
-        .json({ message: "No comments found for this post", success: false });
+    if (lastId) {
+      filter._id = { $lt: lastId };
+    }
 
-    return res.status(200).json({ success: true, comments });
+    const comments = await Comment.find(filter)
+      .populate("author", "username profilePic")
+      .sort({ _id: -1 })
+      .limit(5);
+
+    return res.status(200).json({ 
+      success: true, 
+      comments,
+      nextCursor: comments.length > 0 ? comments[comments.length - 1]._id : null
+    });
   } catch (error) {
     console.log(error);
   }
@@ -187,18 +218,27 @@ export const getScriptVersion = async (req, res) => {
 export const loadScriptsOfUser = async (req, res) => {
   //copied
   try {
-    const { lastId, title, onlyMine, bookmarked } = req.query;
-    const visibility = "public";
+    const { lastId, title, onlyMine, bookmarked, author } = req.query;
     let filter = {};
 
-    // Only my scripts
+    // Only my scripts (for feeds where user wants their own content)
     if (onlyMine === "true") {
       filter.author = req.userId;
+    } else if (author) {
+      // Explicit author filter (used on profile page)
+      filter.author = author;
     }
 
-    //  Visibility filter
+    // Visibility rules:
+    // - If viewing own scripts (onlyMine=true OR author === req.userId) → show all visibilities
+    // - Otherwise (home feed / viewing someone else's profile) → only public scripts
+    const isViewingOwn =
+      onlyMine === "true" ||
+      (author && req.userId && author.toString() === req.userId.toString());
 
-    filter.visibility = visibility; // "public" | "private"
+    if (!isViewingOwn) {
+      filter.visibility = "public";
+    }
 
     //  Search by title
     if (title) {
@@ -227,7 +267,17 @@ export const loadScriptsOfUser = async (req, res) => {
       filter._id = { ...(filter._id || {}), $lt: lastId };
     }
 
-    const scripts = await Script.find(filter).sort({ _id: -1 }).limit(10);
+    const scripts = await Script.find(filter)
+      .populate("author", "username profilePic")
+      .populate({
+        path: "comments",
+        populate: {
+          path: "author",
+          select: "username profilePic"
+        }
+      })
+      .sort({ _id: -1 })
+      .limit(10);
 
     res.json({
       success: true,
@@ -235,36 +285,145 @@ export const loadScriptsOfUser = async (req, res) => {
       nextCursor: scripts.length > 0 ? scripts[scripts.length - 1]._id : null,
     });
   } catch (err) {
+    console.error("loadScriptsOfUser error:", err);
     res.status(500).json({ error: err.message });
   }
 };
 
+// Create a new access request for a script
+export const requestScriptAccess = async (req, res) => {
+  try {
+    const scriptId = req.params.id;
+    const userId = req.userId;
+
+    const script = await Script.findById(scriptId).populate("author", "username");
+    if (!script) {
+      return res.status(404).json({ msg: "Script not found" });
+    }
+
+    // Author already has full access
+    if (script.author.equals(userId)) {
+      return res.status(400).json({ msg: "You are the author of this script" });
+    }
+
+    // Already in allowed users
+    if ((script.allowedUsers || []).some(id => id.equals(userId))) {
+      return res.status(400).json({ msg: "You already have access to this script" });
+    }
+
+    // Existing pending request
+    const existing = await ScriptRequestAccess.findOne({
+      sender: userId,
+      receiver: scriptId,
+      status: "pending",
+    });
+
+    if (existing) {
+      return res.json({ success: true, msg: "Request already pending" });
+    }
+
+    const request = await ScriptRequestAccess.create({
+      sender: userId,
+      receiver: scriptId,
+      status: "pending",
+    });
+
+    await request.populate("sender", "username profilePic");
+
+    return res.status(201).json({
+      success: true,
+      msg: "Access request sent",
+      request,
+    });
+  } catch (error) {
+    console.error("requestScriptAccess error:", error);
+    return res.status(500).json({ msg: "Failed to send access request" });
+  }
+};
+
+// List pending access requests for a script (author only)
+export const getScriptAccessRequests = async (req, res) => {
+  try {
+    const scriptId = req.params.id;
+    const userId = req.userId;
+
+    const script = await Script.findById(scriptId);
+    if (!script) {
+      return res.status(404).json({ msg: "Script not found" });
+    }
+
+    if (!script.author.equals(userId)) {
+      return res.status(403).json({ msg: "You are not allowed to view these requests" });
+    }
+
+    const requests = await ScriptRequestAccess.find({
+      receiver: scriptId,
+      status: "pending",
+    }).populate("sender", "username profilePic");
+
+    return res.json({ success: true, requests });
+  } catch (error) {
+    console.error("getScriptAccessRequests error:", error);
+    return res.status(500).json({ msg: "Failed to load access requests" });
+  }
+};
+
+// Accept / reject a specific access request (by requestId in path)
 export const acceptRequest = async (req, res) => {
   try {
-    const { requestId } = req.body;
+    const { id: requestId } = req.params;
 
     const request = await ScriptRequestAccess.findById(requestId);
+    if (!request) {
+      return res.status(404).json({ msg: "Request not found" });
+    }
 
-    await Script.findByIdAndUpdate(request.sender, {
-      $push: { allowedUsers: request.receiver },
+    const script = await Script.findById(request.receiver);
+    if (!script) {
+      return res.status(404).json({ msg: "Script not found" });
+    }
+
+    if (!script.author.equals(req.userId)) {
+      return res.status(403).json({ msg: "You are not allowed to accept this request" });
+    }
+
+    await Script.findByIdAndUpdate(script._id, {
+      $addToSet: { allowedUsers: request.sender },
     });
 
     request.status = "accepted";
     await request.save();
 
-    res.json({ msg: "Follow request accepted" });
+    res.json({ success: true, msg: "Access request accepted" });
   } catch (error) {
-    return res.status(404).json({ message: `errpr:${error}` });
+    console.error("acceptRequest error:", error);
+    return res.status(500).json({ message: `error:${error}` });
   }
 };
 
 export const rejectRequest = async (req, res) => {
   try {
-    const { requestId } = req.body;
+    const { id: requestId } = req.params;
+
+    const request = await ScriptRequestAccess.findById(requestId);
+    if (!request) {
+      return res.status(404).json({ msg: "Request not found" });
+    }
+
+    const script = await Script.findById(request.receiver);
+    if (!script) {
+      return res.status(404).json({ msg: "Script not found" });
+    }
+
+    if (!script.author.equals(req.userId)) {
+      return res.status(403).json({ msg: "You are not allowed to reject this request" });
+    }
+
     await ScriptRequestAccess.findByIdAndDelete(requestId);
-    res.json({ msg: "Follow request rejected" });
+    res.json({ success: true, msg: "Access request rejected" });
   } catch (error) {
-    return res.status(404).json({ message: `error:${error}` });
+    console.error("rejectRequest error:", error);
+    return res.status(500).json({ message: `error:${error}` });
   }
 };
 
@@ -293,12 +452,11 @@ export async function addPhotoScript(req, res) {
 }
 export const updateScript = async (req, res) => {
   try {
-    const {id} = req.query;
-   const scriptId = new mongoose.Types.ObjectId(id)
-    console.log(`${scriptId}`)
+    const { id } = req.params;
+    const scriptId = new mongoose.Types.ObjectId(id);
     const { title, description, author, genre, purpose, visibility } = req.body;
 
-    const script = await Book.findById(scriptId);
+    const script = await Script.findById(scriptId);
 
     if (!script) {
       return res.status(404).json({ msg: "Script not found" });
@@ -307,8 +465,12 @@ export const updateScript = async (req, res) => {
     if (!script.author.equals(req.userId)) {
       return res
         .status(403)
-        .json({ msg: "You are not allowed to update this book" });
+        .json({ msg: "You are not allowed to update this script" });
     }
+
+    // Map 'private' from frontend to 'restricted' enum in the model
+    const normalizedVisibility =
+      visibility === "private" ? "restricted" : visibility;
 
     const updatedScript = await Script.findByIdAndUpdate(
       scriptId,
@@ -318,13 +480,14 @@ export const updateScript = async (req, res) => {
         author,
         genre,
         purpose,
-        visibility,
+        ...(normalizedVisibility && { visibility: normalizedVisibility }),
       },
       { new: true, runValidators: true },
     );
 
     res.json(updatedScript);
   } catch (err) {
+    console.error("updateScript error:", err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -339,8 +502,7 @@ export const bookmarkScript = async (req, res) => {
         .json({ message: "Script not found", success: false });
 
     const user = await User.findById(userid);
-    if (user.bookmarks.includes(script._id)) {
-      //actual way of checking references
+    if (user.bookmarksScript.includes(script._id)) {
       // already bookmarked -> remove from the bookmark
       await user.updateOne({ $pull: { bookmarksScript: script._id } });
       await user.save();
@@ -361,15 +523,42 @@ export const bookmarkScript = async (req, res) => {
     console.log(error);
   }
 };
+
+export const toggleLikeScript = async (req, res) => {
+  try {
+    const scriptId = req.params.id;
+    const userid = req.userId;
+    const script = await Script.findById(scriptId);
+    if (!script)
+      return res
+        .status(404)
+        .json({ message: "Script not found", success: false });
+
+    if (script.likes.includes(userid)) {
+      await script.updateOne({ $pull: { likes: userid } });
+      return res.status(200).json({ type: "unliked", message: "Post unliked", success: true });
+    } else {
+      await script.updateOne({ $addToSet: { likes: userid } });
+      return res.status(200).json({ type: "liked", message: "Post liked", success: true });
+    }
+  } catch (error) {
+    console.log(error);
+  }
+};
 export const searchScriptById = async (req, res) => {
   try {
     const { codee } = req.query; // script mongoose id entered by user//bad me nanoid
-    const code =new mongoose.Types.ObjectId(codee)
+    const code = new mongoose.Types.ObjectId(codee)
     if (!code) {
       return res.status(400).json({ msg: "Script code is required" });
     }
 
-    const script = await Script.findById(code);
+    const script = await Script.findById(code)
+      .populate("author", "username profilePic")
+      .populate({
+        path: "edits",
+        model: "scriptVersion"
+      });
 
     if (!script) {
       return res.status(404).json({ msg: "script not found" });

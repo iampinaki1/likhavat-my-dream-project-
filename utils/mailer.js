@@ -2,7 +2,9 @@ import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 dotenv.config();
 const mail = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
   auth: {
     user: process.env.Email_USERS,
     pass: process.env.Email_PASS,
@@ -15,11 +17,11 @@ const mail = nodemailer.createTransport({
  *@param {string} [html]
  */
 
- function sendmail({to,subject,text,html}){
-  const mailDetails={
-    from:process.env.Email_USERS,
-    to,subject,text,html
+function sendmail({ to, subject, text, html }) {
+  const mailDetails = {
+    from: process.env.Email_USERS,
+    to, subject, text, html
   };
   return mail.sendMail(mailDetails);
- }
-  export {sendmail}
+}
+export { sendmail }

@@ -14,10 +14,13 @@ import {
   loadBooksOfUser,
   searchBookById,
   bookmarkBook,
-} from "../controller/bookController";
+  toggleLikeBook,
+} from "../controller/bookController.js";
 
 const router = express.Router();
 router.post("/book/create", verifyUser, createBook);
+router.post("/book/:id/bookmark", verifyUser, bookmarkBook);
+router.post("/book/:id/like", verifyUser, toggleLikeBook);
 router.put("/book/:bookId/addImage", verifyUser, addPhoto);
 router.delete("/book/:bookId", verifyUser, deleteBook);
 router.post("/chapter", verifyUser, createChapter);
@@ -29,7 +32,9 @@ router.put("/book/:bookId/update", verifyUser, updateBook);
 router.post("/book/:id/comment", verifyUser, addCommentBook);
 router.get("/book/:id/comment", verifyUser, getCommentsOfBook); //could have used route chaining
 router.get("/book/search", verifyUser, searchBookById);
-router.post("/book/:id/bookmark", verifyUser, bookmarkBook); 
-router.delete("/book/:id",verifyUser,deleteBook)
+router.post("/book/:id/bookmark", verifyUser, bookmarkBook);
+router.delete("/book/:id", verifyUser, deleteBook)
 
 //edit request ko auto bookmark kar de ya first bookmark then request send//only his books
+
+export default router;

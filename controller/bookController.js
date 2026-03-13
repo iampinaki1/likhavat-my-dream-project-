@@ -1,19 +1,52 @@
 import upload from "../utils/cloudinary.js";
 import { Book } from "../models/book.model.js";
 import { Chapter } from "../models/chapter.model.js";
+import { Comment } from "../models/comment.models.js";
 import User from "../models/user.models.js";
 export const createBook = async (req, res) => {
   try {
-    const { title, author, description, visibility } = req.body;
+    const { title, description, visibility, chapters, coverImage } = req.body;
+    const authorId = req.userId || req.body.author;
+
+    // Map 'private' from frontend to 'restricted' enum in the model
+    const normalizedVisibility =
+      visibility === "private" ? "restricted" : visibility || "restricted";
 
     const book = await Book.create({
       title,
-      author,
+      author: authorId,
       description,
-      visibility,
+      visibility: normalizedVisibility,
+      image: coverImage || "no img",
     });
 
-    res.status(201).json(book);
+    if (chapters && chapters.length > 0) {
+      for (const ch of chapters) {
+        const newChapter = await Chapter.create({
+          title: ch.title,
+          content: ch.content,
+          chapterNumber: ch.order || 1,
+          book: book._id,
+        });
+        book.chapters.push(newChapter._id);
+      }
+    } else {
+      const initialChapter = await Chapter.create({
+        title: "Chapter 1",
+        content: "Once upon a time...",
+        chapterNumber: 1,
+        book: book._id,
+      });
+      book.chapters.push(initialChapter._id);
+    }
+
+    await book.save();
+
+    const populatedBook = await Book.findById(book._id)
+      .populate("author", "username profilePic")
+      .populate("chapters");
+
+    res.status(201).json(populatedBook);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -27,8 +60,8 @@ export const createChapter = async (req, res) => {
       if (book.author.toString() !== req.userId) {
         return res.status(403).json({ msg: "You are not authorised" });
       }
-      const chaptercheck = await Chapter.findOne({ chapterNumber,book:bookId});
-      if(chaptercheck){return res.json({msg:"chapter already exist"})}
+      const chaptercheck = await Chapter.findOne({ chapterNumber, book: bookId });
+      if (chaptercheck) { return res.json({ msg: "chapter already exist" }) }
 
       if (!chaptercheck) {
         const chapter = await Chapter.create({
@@ -106,7 +139,7 @@ export const deleteChapter = async (req, res) => {
 export const addCommentBook = async (req, res) => {
   try {
     const bookId = req.params.id;
-    const commentKrneWalaUserKiId = req.id;
+    const commentKrneWalaUserKiId = req.userId;
 
     const { text } = req.body;
 
@@ -120,7 +153,7 @@ export const addCommentBook = async (req, res) => {
     const comment = await Comment.create({
       text,
       author: commentKrneWalaUserKiId,
-      script: scriptId,
+      bookId: bookId, // Fixed reference
     });
 
     await comment.populate({
@@ -129,7 +162,7 @@ export const addCommentBook = async (req, res) => {
     });
 
     book.comments.push(comment._id);
-    await post.save();
+    await book.save(); // Fixed post->book
 
     return res.status(201).json({
       message: "Comment Added",
@@ -144,18 +177,24 @@ export const addCommentBook = async (req, res) => {
 export const getCommentsOfBook = async (req, res) => {
   try {
     const bookId = req.params.id;
+    const { lastId } = req.query;
 
-    const comments = await Comment.find({ bookId: bookId }).populate(
-      "author",
-      "username profilePic"
-    );
+    let filter = { bookId: bookId };
 
-    if (!comments)
-      return res
-        .status(404)
-        .json({ message: "No comments found for this post", success: false });
+    if (lastId) {
+      filter._id = { $lt: lastId };
+    }
 
-    return res.status(200).json({ success: true, comments });
+    const comments = await Comment.find(filter)
+      .populate("author", "username profilePic")
+      .sort({ _id: -1 })
+      .limit(5);
+
+    return res.status(200).json({ 
+      success: true, 
+      comments,
+      nextCursor: comments.length > 0 ? comments[comments.length - 1]._id : null
+    });
   } catch (error) {
     console.log(error);
   }
@@ -178,14 +217,23 @@ export const updateBook = async (req, res) => {
         .json({ msg: "You are not allowed to update this book" });
     }
 
+    // Map 'private' from frontend to 'restricted' enum in the model
+    const normalizedVisibility =
+      visibility === "private" ? "restricted" : visibility;
+
+    const updateData = {
+      title,
+      author,
+      description,
+    };
+
+    if (normalizedVisibility) {
+      updateData.visibility = normalizedVisibility;
+    }
+
     const updatedBook = await Book.findByIdAndUpdate(
       bookId,
-      {
-        title,
-        author,
-        description,
-        visibility,
-      },
+      updateData,
       { new: true, runValidators: true }
     );
 
@@ -199,7 +247,9 @@ export const getBookWithChapters = async (req, res) => {
   try {
     const { bookId } = req.params;
 
-    const book = await Book.findById(bookId).populate("chapters");
+    const book = await Book.findById(bookId)
+      .populate("chapters")
+      .populate("author", "username profilePic");
 
     if (!book) {
       return res.status(404).json({ msg: "Book not found" });
@@ -240,13 +290,15 @@ export async function addPhoto(req, res) {
 export const loadBooksOfUser = async (req, res) => {
   //copied
   try {
-    const { lastId, visibility, title, onlyMine, bookmarked } = req.query;
+    const { lastId, visibility, title, onlyMine, bookmarked, author } = req.query;
 
     let filter = {};
 
     // Only my scripts
     if (onlyMine === "true") {
       filter.author = req.userId;
+    } else if (author) {
+      filter.author = author;
     }
 
     //  Visibility filter
@@ -279,7 +331,17 @@ export const loadBooksOfUser = async (req, res) => {
       filter._id = { ...(filter._id || {}), $lt: lastId };
     }
 
-    const books = await Book.find(filter).sort({ _id: -1 }).limit(10);
+    const books = await Book.find(filter)
+      .populate("author", "username profilePic")
+      .populate({
+        path: "comments",
+        populate: {
+          path: "author",
+          select: "username profilePic"
+        }
+      })
+      .sort({ _id: -1 })
+      .limit(10);
 
     res.json({
       success: true,
@@ -299,7 +361,9 @@ export const searchBookById = async (req, res) => {
       return res.status(400).json({ msg: "Book code is required" });
     }
 
-    const book = await Book.findById(code).populate("chapters");
+    const book = await Book.findById(code)
+      .populate("chapters")
+      .populate("author", "username profilePic");
 
     if (!book) {
       return res.status(404).json({ msg: "Book not found" });
@@ -319,17 +383,16 @@ export const bookmarkBook = async (req, res) => {
   try {
     const bookId = req.params.id;
     const userid = req.userId;
-    const script = await Book.findById(bookId);
-    if (!script)
+    const book = await Book.findById(bookId);
+    if (!book)
       return res
         .status(404)
         .json({ message: "Post not found", success: false });
 
     const user = await User.findById(userid);
-    if (user.bookmarks.includes(script._id)) {
-      //actual way of checking references
+    if (user.bookmarksBook.includes(book._id)) {
       // already bookmarked -> remove from the bookmark
-      await user.updateOne({ $pull: { bookmarksBooks: script._id } });
+      await user.updateOne({ $pull: { bookmarksBook: book._id } });
       await user.save();
       return res.status(200).json({
         type: "unsaved",
@@ -337,8 +400,8 @@ export const bookmarkBook = async (req, res) => {
         success: true,
       });
     } else {
-      // bookmark krna pdega
-      await user.updateOne({ $addToSet: { bookmarksBooks: script._id } });
+      // bookmark
+      await user.updateOne({ $addToSet: { bookmarksBook: book._id } });
       await user.save();
       return res
         .status(200)
@@ -348,13 +411,35 @@ export const bookmarkBook = async (req, res) => {
     console.log(error);
   }
 };
-export const deleteBook=async(req,res)=>{
+
+export const toggleLikeBook = async (req, res) => {
+  try {
+    const bookId = req.params.id;
+    const userid = req.userId;
+    const book = await Book.findById(bookId);
+    if (!book)
+      return res
+        .status(404)
+        .json({ message: "Post not found", success: false });
+
+    if (book.likes.includes(userid)) {
+      await book.updateOne({ $pull: { likes: userid } });
+      return res.status(200).json({ type: "unliked", message: "Post unliked", success: true });
+    } else {
+      await book.updateOne({ $addToSet: { likes: userid } });
+      return res.status(200).json({ type: "liked", message: "Post liked", success: true });
+    }
+  } catch (error) {
+    console.log(error);
+  }
+};
+export const deleteBook = async (req, res) => {
   const userid = req.userId;
-  const bookId=req.params.bookId
-  const book= await Book.findOneAndDelete({
-    _id:bookId,
-    author:userid
+  const bookId = req.params.bookId
+  const book = await Book.findOneAndDelete({
+    _id: bookId,
+    author: userid
   })
-  if(!book){return res.status(400).json({msg:"user is not authorised"})}
+  if (!book) { return res.status(400).json({ msg: "user is not authorised" }) }
 
 }

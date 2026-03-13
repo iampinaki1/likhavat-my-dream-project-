@@ -3,7 +3,8 @@ import mongoose from "mongoose";
 const userSchema = new mongoose.Schema(
   {
     username: { type: String, required: true, unique: true },
-    profilepic: { type: String, default: "" },
+    profilePic: { type: String, default: "" },
+    bio: { type: String, default: "", maxlength: 150 },
     email: { type: String, required: true, unique: true, lowercase: true },
     password: { type: String, required: true },
     followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], //make default null
@@ -13,7 +14,8 @@ const userSchema = new mongoose.Schema(
     bookmarksBook: [{ type: mongoose.Schema.Types.ObjectId, ref: "Book" }],
     termAndCondition: { type: Boolean, default: false, required: true },
     isPrivate: { type: Boolean, default: true, required: true }, //only for follow all or request
-    refreshToken: {type: String,select: false}},
+    refreshToken: { type: String, select: false }
+  },
   { timestamp: true }
 );
 const User = mongoose.model("User", userSchema);

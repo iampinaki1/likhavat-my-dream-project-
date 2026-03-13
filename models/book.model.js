@@ -16,7 +16,7 @@ const bookSchema = new mongoose.Schema(
     description: {
       type: String,
     },
-    
+
     visibility: {
       type: String,
       enum: ["public", "restricted"],
@@ -24,11 +24,23 @@ const bookSchema = new mongoose.Schema(
       default: "restricted",
     },
 
+    likes: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+      default: [],
+    },
+
     // Store only Chapter IDs
     chapters: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Chapter",
+      },
+    ],
+
+    comments: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Comment",
       },
     ],
   },

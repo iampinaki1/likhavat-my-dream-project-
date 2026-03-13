@@ -7,11 +7,31 @@ import TempUser from "../models/tempuser.models.js";
 import FollowRequest from "../models/followerRequest.models.js";
 import upload from "../utils/cloudinary.js";
 import mongoose from "mongoose";
+import { z } from "zod";
 dotenv.config();
+
+const signupSchema = z.object({
+  username: z.string().min(3, "Username must be at least 3 characters"),
+  email: z.string().email("Invalid email format"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  termAndCondition: z.boolean().refine((val) => val === true, {
+    message: "Terms and conditions must be accepted",
+  }),
+});
+
+const signinSchema = z.object({
+  email_username: z.string().min(3, "Email/Username is required"),
+  password: z.string().min(1, "Password is required"),
+});
 
 // //signup controller
 async function signup(req, res) {
-  const { username, email, password, termAndCondition } = req.body;
+  const validation = signupSchema.safeParse(req.body);
+  if (!validation.success) {
+    return res.status(400).json({ msg: validation.error.errors[0].message });
+  }
+
+  const { username, email, password, termAndCondition } = validation.data;
   try {
     if (termAndCondition === true) {
       const user = await User.findOne({ email });
@@ -105,33 +125,31 @@ async function verify_signup(req, res) {
   }
 }
 async function updateProfile(req, res) {
-  const { username, isPrivate } = req.body;
+  const { username, isPrivate, profilePicUrl, bio } = req.body;
   const userId = req.userId;
-  const localFilePath = req.file.path;
-  console.log(localFilePath);
-  const imageUrl = await upload(localFilePath);
-  console.log(imageUrl);
   const details = {};
-  if (username) {
-    details.username = username;
+
+  if (req.file) {
+    const localFilePath = req.file.path;
+    const imageUrl = await upload(localFilePath);
+    if (imageUrl) details.profilePic = imageUrl;
+  } else if (profilePicUrl) {
+    details.profilePic = profilePicUrl;
   }
-  if (isPrivate !== undefined) {
-    details.isPrivate = isPrivate;
-  }
-  if (imageUrl) {
-    details.profilePic = imageUrl;
-  }
+
+  if (username) details.username = username;
+  if (isPrivate !== undefined) details.isPrivate = isPrivate;
+  if (bio !== undefined) details.bio = bio;
+
   try {
     const user = await User.findByIdAndUpdate(
       userId,
-      {
-        $set: details,
-      },
-      { new: true },
+      { $set: details },
+      { new: true }
     );
     return res.json({
       msg: "Details uploaded successfully",
-      profilePic: user.profilepic,
+      profilePic: user.profilePic,
     });
   } catch (err) {
     res.json({ msg: `err${err}` });
@@ -140,31 +158,38 @@ async function updateProfile(req, res) {
 //change password
 async function changePassword(req, res) {
   try {
-    const { email, _id, newpassword } = req.body;
-    let user;
-    if (!_id) {
-      user = await User.findOne({ email });
+    const { email, newpassword } = req.body;
+
+    if (!email || !newpassword) {
+      return res.status(400).json({ msg: "Please provide email and new password" });
     }
-    if (!email) {
-      user = await User.findById(_id);
-    }
+
+    const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ msg: "not registered" });
 
+    // Clean up any existing pending resets for this user to avoid E11000 duplicate key errors
+    await TempUser.findOneAndDelete({ email: user.email });
+
     const verificationCode = Math.floor(1000 + Math.random() * 9000);
-    const verificationCodeExpiry = new Date(Data.now() + 2 * 60 * 1000);
-    user = new TempUser({
-      username: User.username,
-      email: User.email,
-      password: newpassword,
+    const verificationCodeExpiry = new Date(Date.now() + 2 * 60 * 1000);
+
+    // Hash the new password immediately for security before saving to TempUser
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newpassword, salt);
+
+    const tempUser = new TempUser({
+      username: user.username,
+      email: user.email,
+      password: hashedPassword,
       verificationCode,
       verificationCodeExpiry,
     });
 
-    await TempUser.Save();
+    await tempUser.save();
     await sendmail({
       to: email,
-      subject: "welcome to my project todolist",
-      html:  `
+      subject: "welcome to my project likhavat",
+      html: `
   <h1 style="font-family: Arial, sans-serif; color: #202124;">
     Your verification code for resetting your password
   </h1>
@@ -180,7 +205,7 @@ async function changePassword(req, res) {
     });
     return res.status(201).json({
       msg: "verification code has sent ...redirecting to verification page",
-      UserId: "User.username",
+      tempUserId: tempUser._id,
     });
   } catch (err) {
     console.error(err.message);
@@ -190,30 +215,33 @@ async function changePassword(req, res) {
 //resetpassword bohi to upar likha bro
 
 async function verify_newPassword(req, res) {
-  const { username, verificationCode, newPassword } = req.body;
+  const { tempUserId, verificationCode } = req.body;
   try {
-    const user = await User.findOne({ username });
-    const tempUser = await User.findOne({ username });
-    if (!user) return res.status(400).json({ msg: "first create id" });
-    if (!tempUser.verificationCode || !tempUser.verificationcodeExpiry)
+    const tempUser = await TempUser.findById(tempUserId);
+    if (!tempUser) return res.status(400).json({ msg: "Session expired or invalid. Please try again." });
+
+    if (!tempUser.verificationCode || !tempUser.verificationCodeExpiry)
       return res.status(400).json({ msg: "try again" });
-    if (new Date() > tempUser.verificationcodeExpiry)
+
+    if (new Date() > tempUser.verificationCodeExpiry)
       return res.status(400).json({ msg: "code expired" });
-    if (tempUser.verificationCode !== verificationCode)
+
+    if (tempUser.verificationCode !== parseInt(verificationCode))
       return res.status(400).json({ msg: "invalid code" });
-    const salt = await bcrypt.genSalt(10);
-    const Password = await bcrypt.hash(newPassword, salt);
+
+    // The password in TempUser is already hashed during changePassword
     await User.findOneAndUpdate(
-      username,
+      { email: tempUser.email },
       {
         $set: {
           password: tempUser.password,
         },
       },
-      { new: true },
+      { new: true }
     );
-    await TempUser.deleteOne({ email });
-    return Response.status(200).json({ msg: "password updated try to login" });
+
+    await TempUser.findByIdAndDelete(tempUserId);
+    return res.status(200).json({ msg: "password updated try to login", success: true });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: "Server error" });
@@ -223,10 +251,12 @@ async function verify_newPassword(req, res) {
 //signin
 const signin = async (req, res) => {
   try {
-    const { email_username, password } = req.body; //email or username
-    if (!email_username || !password) {
-      return res.status(400).json({ msg: "Missing credentials" });
+    const validation = signinSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ msg: validation.error.errors[0].message });
     }
+
+    const { email_username, password } = validation.data;
     const user = await User.findOne({
       $or: [{ username: email_username }, { email: email_username }],
     });
@@ -259,19 +289,43 @@ const signin = async (req, res) => {
       sameSite: "strict",
       maxAge: 4 * 24 * 60 * 60 * 1000,
     });
-    const html = `
+    try {
+      const html = `
 <p style="font-family: Arial, sans-serif; font-size: 14px; color: #202124;">
   Thanks for logging in again! We’re glad to have you back.
 </p>
 `;
-    await sendmail({
-      to: user.email,
-      subject: "WELCOME BACK",
-      html,
-    });
+      await sendmail({
+        to: user.email,
+        subject: "WELCOME BACK",
+        html,
+      });
+    } catch (mailErr) {
+      console.warn("Mail error on signin:", mailErr);
+    }
+
+    const pendingRequests = await FollowRequest.find({ sender: user._id, status: "pending" });
+    const sentRequestsIds = pendingRequests.map(req => req.receiver);
+
     return res
       .status(200)
-      .json({ msg: "login successful", accessToken, refreshToken });
+      .json({
+        msg: "login successful",
+        accessToken,
+        refreshToken,
+        user: {
+          _id: user._id,
+          username: user.username,
+          email: user.email,
+          profilePic: user.profilePic,
+          followers: user.followers,
+          following: user.following,
+          bio: user.bio,
+          sentRequests: sentRequestsIds,
+          bookmarksBook: user.bookmarksBook,
+          bookmarksScript: user.bookmarksScript,
+        }
+      });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: "Server error" });
@@ -281,21 +335,36 @@ const signin = async (req, res) => {
 const username = async (req, res) => {
   try {
     const username = req.params.username;
+    // Find target user
     const user = await User.findOne({ username }).select("-password");
     if (user) {
-      const follow = FollowRequest.findOne({
-        receiver: username,
-        sender: user.id,
+      // Check if there's a pending follow request
+      const follow = await FollowRequest.findOne({
+        receiver: user._id,
+        sender: req.userId,
       });
 
-      return res.status(200).json(user, follow.status);
+      return res.status(200).json({ user, followStatus: follow?.status || null });
     }
-    res.status(200).json({ search: "not found" });
+    res.status(404).json({ search: "not found" });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: "Server error" });
   }
 }; //total all follwers following profile pic will be handlled by frontend
+
+const getAllUsers = async (req, res) => {
+  try {
+    // Return lightweight user objects for the directory/suggestions
+    const users = await User.find({})
+      .select("_id username profilePic bio followers following isPrivate")
+      .lean();
+    res.status(200).json(users);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+};
 
 const logout = (req, res) => {
   try {
@@ -360,7 +429,7 @@ const acceptRequest = async (req, res) => {
   const request = await FollowRequest.findById(requestId);
 
   await User.findByIdAndUpdate(request.receiver, {
-    $push: { follower: request.sender },
+    $push: { followers: request.sender },
   });
 
   await User.findByIdAndUpdate(request.sender, {
@@ -388,11 +457,9 @@ const followUnfollow = async (req, res) => {
       return res.status(400).json({ msg: "self follow not allowed" });
     }
 
-    // const check = user.following.includes(userJiskoFollowKarnaHe._id);
-    const check = user.following.some((id) =>
-      id.equals(userJiskoFollowKarnaHe._id),
-    );
-    if (check)
+    const check = user.following.some(id => id.toString() === userJiskoFollowKarnaHe._id.toString());
+
+    if (check) {
       await Promise.all([
         User.updateOne(
           { username: user.username },
@@ -403,7 +470,8 @@ const followUnfollow = async (req, res) => {
           { $pull: { followers: user._id } },
         ),
       ]);
-    else {
+      return res.json({ msg: "Unfollowed", targetId: userJiskoFollowKarnaHe._id });
+    } else {
       if (userJiskoFollowKarnaHe.isPrivate) {
         const requests = await FollowRequest.create({
           sender: user._id,
@@ -423,7 +491,7 @@ const followUnfollow = async (req, res) => {
             { $push: { followers: user._id } },
           ),
         ]);
-        res.json({ msg: "Followed" });
+        res.json({ msg: "Followed", targetId: userJiskoFollowKarnaHe._id });
       }
     }
   } catch (err) {
@@ -441,8 +509,7 @@ const refresh = async (req, res) => {
 
     const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET_REFRESH);
 
-    const user = await User.findById(decoded.userid).select("+refreshToken");;
-    console.log(`${user}  ${user.refreshToken}`)
+    const user = await User.findById(decoded.userid).select("+refreshToken");
 
     if (!user || user.refreshToken !== refreshToken) {
       return res.status(403).json({ msg: "Invalid refresh token" });
@@ -461,9 +528,27 @@ const refresh = async (req, res) => {
       maxAge: 15 * 60 * 1000,
     });
 
+    const pendingRequests = await FollowRequest.find({ sender: user._id, status: "pending" });
+    const sentRequestsIds = pendingRequests.map(req => req.receiver);
+
     return res
       .status(200)
-      .json({ msg: "Access token refreshed", accessToken: newAccessToken });
+      .json({
+        msg: "Access token refreshed",
+        accessToken: newAccessToken,
+        user: {
+          _id: user._id,
+          username: user.username,
+          email: user.email,
+          profilePic: user.profilePic,
+          followers: user.followers,
+          following: user.following,
+          bio: user.bio,
+          sentRequests: sentRequestsIds,
+          bookmarksBook: user.bookmarksBook,
+          bookmarksScript: user.bookmarksScript,
+        }
+      });
   } catch (err) {
     console.error(err);
     return res.status(403).json({ msg: "Refresh failed" });
@@ -485,4 +570,5 @@ export {
   updateProfile,
   requestRecieved,
   refresh,
+  getAllUsers,
 };
