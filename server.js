@@ -1,87 +1,22 @@
-import express from "express";
+import app from "./api/index.js";
 import connectDB from "./config/db.js";
-import cors from "cors";
-import path from "path";
 import dotenv from "dotenv";
-import helmet from "helmet";
-import cookieParser from "cookie-parser";
-import userRoute from "./routes/user.js";
-import scriptRoute from './routes/script.js'
-import bookRoute from './routes/book.js'
-import poemRoute from './routes/poem.js'
-import messageRoute from './routes/message.js'
-import { rateLimit } from "express-rate-limit"
 import { setupSocket } from "./sockets/socketmanagement.js";
-// import {  } from "../controllers/authController.js";
 
 dotenv.config();
-//import routes
-const app = express();
 const PORT = process.env.PORT || 4000;
 
-// ALWAYS PUT CORS FIRST!
-const corsOptions = {
-  origin: process.env.FRONTEND_URL || "http://localhost:5173",
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-};
-
-app.set('trust proxy', 1); // For express-rate-limit working on localhost/proxies
-app.use(cors(corsOptions));
-app.use(helmet());
-// const limiter = rateLimit({
-//   windowMs: 15 * 60 * 1000, // 15 minutes
-//   max: process.env.NODE_ENV === 'production' ? 100 : 5000,
-//   message: "Too many requests from this IP, please try again later.",
-// });
-// app.use(limiter);
-
-// app.get("/health",(req,res)=>res.json({message:"working"}))
-// app.get("*",(req,res)=>res.json({message:"working"}))
-app.use(express.json());
-app.use(cookieParser());
-app.use(express.urlencoded({ extended: true }));
-app.use("/api/user", userRoute);
-app.use("/api/scripts", scriptRoute);
-app.use("/api/books", bookRoute);
-app.use("/api/poems", poemRoute);
-app.use("/api/messages", messageRoute);
-
-app.get("/api/health", (req, res) =>
-  res.json({
-    message: "working",
-    status: "OK",
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-  })
-); //just to check the connected server is recent
-app.get("/", (req, res) => {
-  res.send("Server is running!");
-});
-app.use((req, res) => {
-  res.status(404).json({ error: "no route found" });
-});
 async function start() {
   try {
     await connectDB();
-    console.log(`database connected`);
+    console.log(`Database connected`);
     const { server, io } = setupSocket(app);
     server.listen(PORT, () => {
-      console.log(`server started at ${PORT}`);
-    }); //template litral string dynamic string not static string
+      console.log(`Server started at ${PORT}`);
+    });
   } catch (err) {
-    console.log(`error:${err}`);
+    console.log(`Error: ${err}`);
   }
 }
 
 start();
-
-//routes
-// app.post("/api/v1/user/signupp", (req, res) => {
-//   console.log("TEMP SIGNUP HIT", req.method, req.url, "body:", req.body);
-//   return res.json({ ok: true });
-// });
-
-// Trigger nodemon restart
-// Trigger restart
