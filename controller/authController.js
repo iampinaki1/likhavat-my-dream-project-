@@ -553,6 +553,64 @@ const refresh = async (req, res) => {
   }
 };
 
+// Resend OTP for signup verification
+const resendSignupOtp = async (req, res) => {
+  const { tempUserId } = req.body;
+  try {
+    const tempUser = await TempUser.findById(tempUserId);
+    if (!tempUser) return res.status(400).json({ msg: "Session expired. Please sign up again." });
+
+    const verificationCode = Math.floor(1000 + Math.random() * 9000);
+    const verificationCodeExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    tempUser.verificationCode = verificationCode;
+    tempUser.verificationCodeExpiry = verificationCodeExpiry;
+    await tempUser.save();
+
+    await sendmail({
+      to: tempUser.email,
+      subject: "Resend: Verification Code",
+      html: `<h1 style="font-family: Arial, sans-serif; color: #202124;">Your new verification code</h1>
+             <p style="font-family: Arial, sans-serif; font-size: 14px; color: #202124;"><strong>Code:</strong> ${verificationCode}</p>
+             <p style="font-family: Arial, sans-serif; font-size: 12px; color: #5f6368;">This code will expire in 10 minutes.</p>`,
+    });
+
+    return res.status(200).json({ msg: "New verification code sent" });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+// Resend OTP for password reset
+const resendResetOtp = async (req, res) => {
+  const { tempUserId } = req.body;
+  try {
+    const tempUser = await TempUser.findById(tempUserId);
+    if (!tempUser) return res.status(400).json({ msg: "Session expired. Please request a new reset." });
+
+    const verificationCode = Math.floor(1000 + Math.random() * 9000);
+    const verificationCodeExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    tempUser.verificationCode = verificationCode;
+    tempUser.verificationCodeExpiry = verificationCodeExpiry;
+    await tempUser.save();
+
+    await sendmail({
+      to: tempUser.email,
+      subject: "Resend: Password Reset Code",
+      html: `<h1 style="font-family: Arial, sans-serif; color: #202124;">Your new password reset code</h1>
+             <p style="font-family: Arial, sans-serif; font-size: 14px; color: #202124;"><strong>Code:</strong> ${verificationCode}</p>
+             <p style="font-family: Arial, sans-serif; font-size: 12px; color: #5f6368;">This code will expire in 10 minutes.</p>`,
+    });
+
+    return res.status(200).json({ msg: "New reset code sent" });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
 export {
   acceptRequest,
   rejectRequest,
@@ -569,4 +627,6 @@ export {
   requestRecieved,
   refresh,
   getAllUsers,
+  resendSignupOtp,
+  resendResetOtp,
 };
