@@ -12,7 +12,7 @@ const verifyUser = (req, res, next) => {
   }
   console.log(`${token}`)
   if (!token) {
-    return res.json({ msg: "unauthorized access denied" });
+    return res.status(401).json({ msg: "unauthorized access denied" });
   }
 
   try {

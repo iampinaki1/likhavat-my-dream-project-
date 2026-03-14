@@ -107,7 +107,7 @@ async function verify_signup(req, res) {
       return res.status(400).json({ msg: "try again" });
     if (new Date() > tempUser.verificationCodeExpiry)
       return res.status(400).json({ msg: "code expired" });
-    if (tempUser.verificationCode !== verificationCode)
+    if (tempUser.verificationCode !== parseInt(verificationCode))
       return res.status(400).json({ msg: "invalid code" });
     const newUser = new User({
       username: tempUser.username,
