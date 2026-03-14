@@ -6,12 +6,11 @@ import fs from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Use OS temp dir in production (Render filesystem is ephemeral anyway)
+// Always use /tmp in production (Render), absolute local path otherwise
 const uploadDir = process.env.NODE_ENV === 'production'
   ? '/tmp/my-uploads'
-  : path.join(__dirname, '../../public/my-uploads');
+  : path.join(__dirname, '../public/my-uploads');
 
-// Ensure the directory exists
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
