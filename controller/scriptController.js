@@ -581,7 +581,8 @@ export const searchScriptById = async (req, res) => {
       .populate("author", "username profilePic")
       .populate({
         path: "edits",
-        model: "scriptVersion"
+        model: "scriptVersion",
+        populate: { path: "editedBy", select: "username" }
       });
 
     if (!script) {

@@ -471,13 +471,33 @@ const followUnfollow = async (req, res) => {
       return res.json({ msg: "Unfollowed", targetId: userJiskoFollowKarnaHe._id });
     } else {
       if (userJiskoFollowKarnaHe.isPrivate) {
-        const requests = await FollowRequest.create({
+        // Check for existing pending request to avoid duplicates
+        const existing = await FollowRequest.findOne({
           sender: user._id,
           receiver: userJiskoFollowKarnaHe._id,
-          status: "pending", ///default pending  and it not needed also he model me no need still u can write
+          status: "pending",
         });
-
-        res.json(requests);
+        if (existing) {
+          return res.json({
+            msg: "Follow request sent",
+            isPrivate: true,
+            status: "pending",
+            _id: existing._id,
+            targetId: userJiskoFollowKarnaHe._id,
+          });
+        }
+        const request = await FollowRequest.create({
+          sender: user._id,
+          receiver: userJiskoFollowKarnaHe._id,
+          status: "pending",
+        });
+        return res.json({
+          msg: "Follow request sent",
+          isPrivate: true,
+          status: "pending",
+          _id: request._id,
+          targetId: userJiskoFollowKarnaHe._id,
+        });
       } else {
         await Promise.all([
           User.updateOne(
