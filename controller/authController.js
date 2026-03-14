@@ -279,14 +279,14 @@ const signin = async (req, res) => {
       //access
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
       maxAge: 15 * 60 * 1000,
     });
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
       maxAge: 4 * 24 * 60 * 60 * 1000,
     });
     try {
@@ -371,15 +371,13 @@ const logout = (req, res) => {
     res.clearCookie("token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      sameSite: "strict", // prevent CSRF
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
       maxAge: 15 * 60 * 1000,
     });
     res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      sameSite: "strict", // prevent CSRF
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
       maxAge: 4 * 24 * 60 * 60 * 1000,
     });
     return res.status(200).json({ msg: "logout successful" }); //redirect manually
@@ -524,7 +522,7 @@ const refresh = async (req, res) => {
     res.cookie("token", newAccessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
       maxAge: 15 * 60 * 1000,
     });
 
