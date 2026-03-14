@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 // Always use /tmp in production (Render), absolute local path otherwise
 const uploadDir = process.env.NODE_ENV === 'production'
   ? '/tmp/my-uploads'
-  : path.join(__dirname, '../public/my-uploads');
+  : path.join(__dirname, 'public/my-uploads');
 
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
