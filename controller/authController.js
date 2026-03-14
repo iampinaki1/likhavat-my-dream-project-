@@ -365,7 +365,7 @@ const getFollowList = async (req, res) => {
     const ids = type === 'followers' ? profileUser.followers : profileUser.following;
 
     let filter = { _id: { $in: ids } };
-    if (lastId) filter._id = { $in: ids, $lt: lastId };
+    if (lastId) filter._id = { $in: ids, $lt: new mongoose.Types.ObjectId(lastId) };
 
     const users = await User.find(filter)
       .select('_id username profilePic bio isPrivate')
@@ -390,29 +390,34 @@ const getAllUsers = async (req, res) => {
     const currentUserId = req.userId;
     const LIMIT = 10;
 
-    let filter = { _id: { $ne: currentUserId } };
+    const me = await User.findById(currentUserId).select('following followers').lean();
+    if (!me) return res.status(404).json({ error: 'User not found' });
 
-    // Tab-specific filters using the current user's arrays
-    if (tab === 'following' || tab === 'followers') {
-      const me = await User.findById(currentUserId).select('following followers').lean();
-      if (tab === 'following') {
-        filter._id = { $in: me.following };
-      } else {
-        filter._id = { $in: me.followers };
-      }
-    } else if (tab === 'suggestions') {
-      const me = await User.findById(currentUserId).select('following').lean();
-      filter._id = { $nin: [...me.following, currentUserId] };
+    let idFilter = {};
+
+    if (tab === 'following') {
+      const ids = me.following || [];
+      idFilter = lastId
+        ? { $in: ids, $lt: new mongoose.Types.ObjectId(lastId) }
+        : { $in: ids };
+    } else if (tab === 'followers') {
+      const ids = me.followers || [];
+      idFilter = lastId
+        ? { $in: ids, $lt: new mongoose.Types.ObjectId(lastId) }
+        : { $in: ids };
+    } else {
+      // suggestions: exclude self + already following
+      const excluded = [...(me.following || []), currentUserId];
+      idFilter = lastId
+        ? { $nin: excluded, $lt: new mongoose.Types.ObjectId(lastId) }
+        : { $nin: excluded };
     }
+
+    const filter = { _id: idFilter };
 
     // Search by username
     if (search) {
       filter.username = { $regex: search, $options: 'i' };
-    }
-
-    // Cursor pagination
-    if (lastId) {
-      filter._id = { ...filter._id, $lt: lastId };
     }
 
     const users = await User.find(filter)
