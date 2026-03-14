@@ -15,6 +15,7 @@ import {
   requestRecieved,
   refresh,
   getAllUsers,
+  getFollowList,
   resendSignupOtp,
   resendResetOtp,
 } from "../controller/authController.js";
@@ -38,5 +39,6 @@ router.route("/rejectRequest").post(verifyUser, rejectRequest);
 router.route("/receivedRequest").get(verifyUser, requestRecieved);
 router.route("/profile/:username").get(verifyUser, username);
 router.route("/all").get(verifyUser, getAllUsers);
+router.route("/:username/followlist").get(verifyUser, getFollowList);
 router.post("/refresh", refresh);
 export default router;

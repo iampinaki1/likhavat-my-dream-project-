@@ -353,16 +353,82 @@ const username = async (req, res) => {
   }
 }; //total all follwers following profile pic will be handlled by frontend
 
-const getAllUsers = async (req, res) => {
+const getFollowList = async (req, res) => {
   try {
-    // Return lightweight user objects for the directory/suggestions
-    const users = await User.find({})
-      .select("_id username profilePic bio followers following isPrivate")
+    const { username } = req.params;
+    const { type, lastId } = req.query; // type = 'followers' | 'following'
+    const LIMIT = 15;
+
+    const profileUser = await User.findOne({ username }).select('followers following').lean();
+    if (!profileUser) return res.status(404).json({ error: 'User not found' });
+
+    const ids = type === 'followers' ? profileUser.followers : profileUser.following;
+
+    let filter = { _id: { $in: ids } };
+    if (lastId) filter._id = { $in: ids, $lt: lastId };
+
+    const users = await User.find(filter)
+      .select('_id username profilePic bio isPrivate')
+      .sort({ _id: -1 })
+      .limit(LIMIT)
       .lean();
-    res.status(200).json(users);
+
+    res.status(200).json({
+      success: true,
+      users,
+      nextCursor: users.length === LIMIT ? users[users.length - 1]._id : null,
+    });
   } catch (err) {
     console.error(err.message);
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+const getAllUsers = async (req, res) => {
+  try {
+    const { lastId, tab, search } = req.query;
+    const currentUserId = req.userId;
+    const LIMIT = 10;
+
+    let filter = { _id: { $ne: currentUserId } };
+
+    // Tab-specific filters using the current user's arrays
+    if (tab === 'following' || tab === 'followers') {
+      const me = await User.findById(currentUserId).select('following followers').lean();
+      if (tab === 'following') {
+        filter._id = { $in: me.following };
+      } else {
+        filter._id = { $in: me.followers };
+      }
+    } else if (tab === 'suggestions') {
+      const me = await User.findById(currentUserId).select('following').lean();
+      filter._id = { $nin: [...me.following, currentUserId] };
+    }
+
+    // Search by username
+    if (search) {
+      filter.username = { $regex: search, $options: 'i' };
+    }
+
+    // Cursor pagination
+    if (lastId) {
+      filter._id = { ...filter._id, $lt: lastId };
+    }
+
+    const users = await User.find(filter)
+      .select('_id username profilePic bio isPrivate followers following')
+      .sort({ _id: -1 })
+      .limit(LIMIT)
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      users,
+      nextCursor: users.length === LIMIT ? users[users.length - 1]._id : null,
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error' });
   }
 };
 
@@ -647,6 +713,7 @@ export {
   requestRecieved,
   refresh,
   getAllUsers,
+  getFollowList,
   resendSignupOtp,
   resendResetOtp,
 };
