@@ -10,7 +10,7 @@ export const setupSocket = (app) => {
 
     const io = new Server(server, {
         cors: {
-            origin: process.env.FRONTEND_URL || "http://localhost:5173",
+            origin: (process.env.FRONTEND_URL || "http://localhost:5173").split(",").map(o => o.trim()),
             methods: ['GET', 'POST'],
             credentials: true
         }
@@ -25,13 +25,11 @@ export const setupSocket = (app) => {
 
         io.emit('getOnlineUsers', Object.keys(userSocketMap));
 
-        // Handle sending messages
-        socket.on('sendMessage', (data) => {
+        socket.on('sendMessage', async (data) => {
             const { receiverId, message, senderId, messageId } = data;
             const receiverSocketId = getReceiverSocketId(receiverId);
             
             if (receiverSocketId) {
-                // Send message to receiver
                 io.to(receiverSocketId).emit('receiveMessage', {
                     senderId,
                     message,
@@ -39,16 +37,15 @@ export const setupSocket = (app) => {
                     messageId
                 });
                 
-                // Confirm delivery to sender
                 socket.emit('messageDelivered', {
                     messageId,
                     status: 'delivered'
                 });
             } else {
-                // Send error if receiver is not online
+                // Receiver offline — message already saved via REST, just confirm to sender
                 socket.emit('messageSendError', {
                     messageId,
-                    error: 'Recipient is offline. Message will be delivered when they come online.' 
+                    error: 'Recipient is currently offline.'
                 });
             }
         });
