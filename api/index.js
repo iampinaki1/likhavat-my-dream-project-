@@ -34,25 +34,35 @@ let dbConnected = false;
 let dbConnectionPromise = null;
 
 // Middleware to ensure DB is connected
-app.use(async (req, res, next) => {
+const connectDBMiddleware = async (req, res, next) => {
+  // Skip DB connection for health check
+  if (req.path === "/api/health" || req.path === "/") {
+    return next();
+  }
+
   if (!dbConnected) {
     if (!dbConnectionPromise) {
-      dbConnectionPromise = connectDB().then(() => {
-        dbConnected = true;
-        console.log("Database connected");
-      }).catch((err) => {
-        console.error("Database connection error:", err);
-        throw err;
-      });
+      dbConnectionPromise = connectDB()
+        .then(() => {
+          dbConnected = true;
+          console.log("Database connected");
+        })
+        .catch((err) => {
+          console.error("Database connection error:", err);
+          dbConnectionPromise = null; // Reset on failure
+          return Promise.reject(err);
+        });
     }
     try {
       await dbConnectionPromise;
     } catch (err) {
-      return res.status(500).json({ error: "Database connection failed" });
+      return res.status(500).json({ error: "Database connection failed", details: err.message });
     }
   }
   next();
-});
+};
+
+app.use(connectDBMiddleware);
 
 // Routes
 app.use("/api/user", userRoute);
@@ -78,5 +88,7 @@ app.get("/", (req, res) => {
 app.use((req, res) => {
   res.status(404).json({ error: "no route found" });
 });
+
+export default app;
 
 export default app;
