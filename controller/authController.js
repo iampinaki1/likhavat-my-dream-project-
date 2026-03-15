@@ -11,7 +11,12 @@ import { z } from "zod";
 dotenv.config();
 
 const signupSchema = z.object({
-  username: z.string().min(3, "Username must be at least 3 characters"),
+  username: z.string()
+    .min(3, "Username must be at least 3 characters")
+    .max(30, "Username can't exceed 30 characters")
+    .regex(/^[a-zA-Z0-9._]+$/, "Only letters, numbers, periods and underscores allowed")
+    .refine(v => !v.startsWith('.') && !v.endsWith('.'), "Username can't start or end with a period")
+    .refine(v => !/\.\./.test(v), "Username can't have consecutive periods"),
   email: z.string().email("Invalid email format"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   termAndCondition: z.boolean().refine((val) => val === true, {
