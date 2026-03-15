@@ -3,51 +3,73 @@ import { Conversation } from "../models/conversation.model.js";
 import User from "../models/user.models.js";
 import mongoose from "mongoose";
 
-// Get all conversations for a user
+// Get conversations for a user (cursor-based, most recently updated first)
 export const getConversations = async (req, res) => {
   try {
     const userId = req.userId;
+    const { lastUpdated } = req.query;
+    const LIMIT = 15;
 
-    const conversations = await Conversation.find({
-      participants: userId,
-    })
+    const filter = { participants: userId };
+    if (lastUpdated) {
+      filter.updatedAt = { $lt: new Date(lastUpdated) };
+    }
+
+    const conversations = await Conversation.find(filter)
       .populate("participants", "username profilePic")
       .populate({
         path: "messages",
         options: { limit: 1, sort: { createdAt: -1 } },
       })
-      .sort({ updatedAt: -1 });
+      .sort({ updatedAt: -1 })
+      .limit(LIMIT)
+      .lean();
 
-    if (!conversations) {
-      return res.status(404).json({ msg: "No conversations found" });
-    }
-
-    res.status(200).json(conversations);
+    res.status(200).json({
+      success: true,
+      conversations,
+      nextCursor: conversations.length === LIMIT
+        ? conversations[conversations.length - 1].updatedAt
+        : null,
+    });
   } catch (error) {
     console.log("Error in getConversations:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
 
-// Get messages for a conversation
+// Get messages for a conversation (cursor-based, newest first)
 export const getMessages = async (req, res) => {
   try {
     const { userId } = req.params;
+    const { lastId } = req.query;
     const currentUserId = req.userId;
+    const LIMIT = 20;
 
-    // Fetch all messages between the two users
-    const messages = await Message.find({
+    const filter = {
       $or: [
         { senderId: currentUserId, receiverId: userId },
         { senderId: userId, receiverId: currentUserId },
       ],
-    })
+    };
+
+    if (lastId) {
+      filter._id = { $lt: lastId };
+    }
+
+    const messages = await Message.find(filter)
       .populate("senderId", "username profilePic")
       .populate("receiverId", "username profilePic")
-      .sort({ createdAt: 1 });
+      .sort({ _id: -1 })
+      .limit(LIMIT)
+      .lean();
 
-    // Return messages (can be empty array if no messages yet)
-    res.status(200).json(messages);
+    // Return newest-first; frontend will reverse for display
+    res.status(200).json({
+      success: true,
+      messages,
+      nextCursor: messages.length === LIMIT ? messages[messages.length - 1]._id : null,
+    });
   } catch (error) {
     console.log("Error in getMessages:", error);
     res.status(500).json({ error: "Internal server error" });

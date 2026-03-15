@@ -33,15 +33,16 @@ export const getPoems = async (req, res) => {
             filter._id = { $lt: lastId };
         }
 
+        const LIMIT = 5;
         const poems = await Poem.find(filter)
             .populate("author", "username profilePic")
             .sort({ _id: -1 })
-            .limit(5);
+            .limit(LIMIT);
 
         res.status(200).json({ 
             success: true, 
             poems,
-            nextCursor: poems.length > 0 ? poems[poems.length - 1]._id : null
+            nextCursor: poems.length === LIMIT ? poems[poems.length - 1]._id : null
         });
     } catch (error) {
         res.status(500).json({ success: false, msg: error.message });
