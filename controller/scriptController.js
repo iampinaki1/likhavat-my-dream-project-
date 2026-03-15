@@ -1,42 +1,40 @@
-//it is returns with params of each script
 import Script from "../models/script.models.js";
-import scriptVersion from "../models/scriptVersion.models.js";
+import ScriptVersion from "../models/scriptVersion.models.js";
 import User from "../models/user.models.js";
 import { Comment } from "../models/comment.models.js";
 import ScriptRequestAccess from "../models/scriptAccessRequest.model.js";
 import upload from "../utils/cloudinary.js";
 import mongoose from "mongoose";
 
+// ─── createNewVersion ────────────────────────────────────────────────────────
+// Only the author can create a new version.
+// New version body is pre-filled with the latest existing version's body.
 export const createNewVersion = async (req, res) => {
   try {
     const scriptId = req.params.id;
     const { body } = req.body;
     const userId = req.userId;
-    
-    // Check if user has permission (author or allowed user)
-    const script = await Script.findOne({
-      _id: scriptId,
-      $or: [
-        { author: userId },
-        { allowedUsers: userId }
-      ]
-    });
-    
+
+    const script = await Script.findOne({ _id: scriptId, author: userId })
+      .populate({ path: "edits", model: "ScriptVersion" });
+
     if (!script) {
-      return res.status(403).json({ msg: "You are not authorized to create versions for this script" });
+      return res.status(403).json({ msg: "Only the script author can create new versions" });
     }
-    
-    // Create new version
-    const newVersion = new scriptVersion({
-      body: body || "Start writing...",
+
+    // Default body = last version's body so author can build on it
+    const lastVersion = script.edits?.[script.edits.length - 1];
+    const newBody = body !== undefined ? body : (lastVersion?.body || "Start writing...");
+
+    const newVersion = new ScriptVersion({
+      body: newBody,
       editedBy: userId,
     });
     await newVersion.save();
-    
-    // Add version to script
+
     script.edits.push(newVersion._id);
     await script.save();
-    
+
     return res.status(201).json({ success: true, msg: "Version created", version: newVersion });
   } catch (error) {
     console.error("createNewVersion error:", error);
@@ -45,18 +43,23 @@ export const createNewVersion = async (req, res) => {
 };
 export const deleteVersion = async (req, res) => {
   try {
-    const { scriptId, versionId } = req.param;
+    const { id: scriptId, versionId } = req.params;
     const userid = req.userId;
-    const check = await Script.findOne({ _id: scriptId, allowedUser: userid });
-    const check2 = await Script.findOne({ _id: scriptId, author: userid });
-    if (check.length === 0 && !check2.length === 0) {
-      return res.status(404).json({ msg: "may be user is not verified" });
+
+    const script = await Script.findOne({ _id: scriptId, author: userid });
+    if (!script) {
+      return res.status(403).json({ msg: "Only the script author can delete versions" });
     }
-    const deleted = await scriptVersion.findByIdAndDelete(versionId);
-    return res.status(200).json({ deleted });
+
+    await ScriptVersion.findByIdAndDelete(versionId);
+
+    // Remove from script's edits array
+    await Script.findByIdAndUpdate(scriptId, { $pull: { edits: versionId } });
+
+    return res.status(200).json({ success: true, msg: "Version deleted" });
   } catch (error) {
-    console.log(`error:${error}`);
-    return res.status(500).json({ msg: `error :${error}` });
+    console.error(`deleteVersion error: ${error}`);
+    return res.status(500).json({ msg: `error: ${error}` });
   }
 };
 export const newscript = async (req, res) => {
@@ -79,7 +82,7 @@ export const newscript = async (req, res) => {
     await script.save();
 
     // Initialize an empty first draft!
-    const initialVersion = new scriptVersion({
+    const initialVersion = new ScriptVersion({
       body: "Start writing your script here...",
       editedBy: author,
     });
@@ -123,28 +126,16 @@ export const updateVersion = async (req, res) => {
     const { versionId, body } = req.body;
     const userId = req.userId;
     
-    // Check if user has permission (author or allowed user)
-    const script = await Script.findOne({
-      _id: scriptId,
-      $or: [
-        { author: userId },
-        { allowedUsers: userId }
-      ]
-    });
+    // Only the author can update versions
+    const script = await Script.findOne({ _id: scriptId, author: userId });
     
     if (!script) {
-      return res.status(403).json({ msg: "You are not authorized to edit this script" });
+      return res.status(403).json({ msg: "Only the script author can edit versions" });
     }
     
-    // Update the version
-    const updatedVersion = await scriptVersion.findByIdAndUpdate(
+    const updatedVersion = await ScriptVersion.findByIdAndUpdate(
       versionId,
-      {
-        $set: {
-          body: body,
-          editedBy: userId,
-        },
-      },
+      { $set: { body, editedBy: userId } },
       { new: true }
     );
     
@@ -210,7 +201,7 @@ export const getCommentsOfScripts = async (req, res) => {
     let filter = { scriptId: scriptId };
 
     if (lastId) {
-      filter._id = { $lt: lastId };
+      filter._id = { $lt: new mongoose.Types.ObjectId(lastId) };
     }
 
     const comments = await Comment.find(filter)
@@ -221,7 +212,7 @@ export const getCommentsOfScripts = async (req, res) => {
     return res.status(200).json({ 
       success: true, 
       comments,
-      nextCursor: comments.length > 0 ? comments[comments.length - 1]._id : null
+      nextCursor: comments.length === 5 ? comments[comments.length - 1]._id : null
     });
   } catch (error) {
     console.log(error);
@@ -231,11 +222,11 @@ export const getCommentsOfScripts = async (req, res) => {
 // const likeHandle = async (req, res) => {};
 export const getScriptVersion = async (req, res) => {
   try {
-    versionId = req.param;
-    versionScript = await scriptVersion.findById(versionId);
-    return res.json(versionScript);
+    const versionId = req.params.versionId;
+    const versionScript = await ScriptVersion.findById(versionId);
+    return res.json({ success: true, version: versionScript });
   } catch (error) {
-    return res.json({ message: `error${err}` });
+    return res.status(500).json({ message: `error: ${error}` });
   }
 };
 
@@ -306,7 +297,7 @@ export const loadScriptsOfUser = async (req, res) => {
     res.json({
       success: true,
       scripts,
-      nextCursor: scripts.length > 0 ? scripts[scripts.length - 1]._id : null,
+      nextCursor: scripts.length === 5 ? scripts[scripts.length - 1]._id : null,
     });
   } catch (err) {
     console.error("loadScriptsOfUser error:", err);
@@ -452,26 +443,26 @@ export const rejectRequest = async (req, res) => {
 };
 
 export async function addPhotoScript(req, res) {
-  const { scriptId } = req.param;
-  const localFilePath = req.file.path;
+  const { id: scriptId } = req.params;
+  const localFilePath = req.file?.path;
 
-  const imageUrl = await upload(localFilePath);
+  if (!localFilePath) {
+    return res.status(400).json({ msg: "No file uploaded" });
+  }
+
   try {
+    const imageUrl = await upload(localFilePath);
     if (imageUrl) {
-      //
-
       await Script.findByIdAndUpdate(
         scriptId,
-        {
-          $set: {
-            image: imageUrl,
-          },
-        },
-        { new: true },
+        { $set: { image: imageUrl } },
+        { new: true }
       );
+      return res.json({ success: true, imageUrl });
     }
+    return res.status(500).json({ msg: "Upload failed" });
   } catch (err) {
-    res.json({ msg: `err${err}` });
+    return res.status(500).json({ msg: `err: ${err}` });
   }
 }
 export const updateScript = async (req, res) => {
@@ -579,6 +570,7 @@ export const searchScriptById = async (req, res) => {
 
     const script = await Script.findById(code)
       .populate("author", "username profilePic")
+      .populate("allowedUsers", "username profilePic")
       .populate({
         path: "edits",
         model: "scriptVersion",
