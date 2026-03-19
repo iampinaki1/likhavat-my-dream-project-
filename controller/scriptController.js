@@ -64,10 +64,9 @@ export const deleteVersion = async (req, res) => {
 };
 export const newscript = async (req, res) => {
   try {
-    const { title, description, genre, purpose, visibility } = req.body;
+    const { title, description, genre, purpose, visibility, coverImage } = req.body;
     const author = req.userId;
 
-    // Map 'private' from frontend to 'restricted' enum in the model
     const normalizedVisibility =
       visibility === "private" ? "restricted" : visibility || "restricted";
 
@@ -78,17 +77,16 @@ export const newscript = async (req, res) => {
       genre,
       purpose,
       visibility: normalizedVisibility,
+      ...(coverImage && coverImage.trim() ? { image: coverImage.trim() } : {}),
     });
     await script.save();
 
-    // Initialize an empty first draft!
     const initialVersion = new ScriptVersion({
       body: "",
       editedBy: author,
     });
     await initialVersion.save();
 
-    // Bind this version to the script 
     script.edits.push(initialVersion._id);
     await script.save();
 
