@@ -24,7 +24,7 @@ export const createNewVersion = async (req, res) => {
 
     // Default body = last version's body so author can build on it
     const lastVersion = script.edits?.[script.edits.length - 1];
-    const newBody = body !== undefined ? body : (lastVersion?.body || "Start writing...");
+    const newBody = body !== undefined ? body : (lastVersion?.body || "");
 
     const newVersion = new ScriptVersion({
       body: newBody,
@@ -83,7 +83,7 @@ export const newscript = async (req, res) => {
 
     // Initialize an empty first draft!
     const initialVersion = new ScriptVersion({
-      body: "Start writing your script here...",
+      body: "",
       editedBy: author,
     });
     await initialVersion.save();
@@ -573,7 +573,7 @@ export const searchScriptById = async (req, res) => {
       .populate("allowedUsers", "username profilePic")
       .populate({
         path: "edits",
-        model: "scriptVersion",
+        model: "ScriptVersion",
         populate: { path: "editedBy", select: "username" }
       });
 
