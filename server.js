@@ -1,21 +1,20 @@
 import express from "express";
 import connectDB from "./config/db.js";
 import cors from "cors";
-import path from "path";
 import dotenv from "dotenv";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import userRoute from "./routes/user.js";
-import scriptRoute from './routes/script.js'
-import bookRoute from './routes/book.js'
-import poemRoute from './routes/poem.js'
-import messageRoute from './routes/message.js'
-import { rateLimit } from "express-rate-limit"
+import scriptRoute from './routes/script.js';
+import bookRoute from './routes/book.js';
+import poemRoute from './routes/poem.js';
+import messageRoute from './routes/message.js';
 import { setupSocket } from "./sockets/socketmanagement.js";
-// import {  } from "../controllers/authController.js";
+import { generalLimiter, authLimiter, otpLimiter } from "./middlewires/rateLimiter.js";
+import { errorHandler } from "./middlewires/errorHandler.js";
 
 dotenv.config();
-//import routes
+
 const app = express();
 const PORT = process.env.PORT || 4000;
 
@@ -25,7 +24,6 @@ const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:5173")
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, Postman)
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
     callback(new Error(`CORS: origin ${origin} not allowed`));
@@ -35,21 +33,25 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization']
 };
 
-app.set('trust proxy', 1); // For express-rate-limit working on localhost/proxies
+app.set('trust proxy', 1);
 app.use(cors(corsOptions));
 app.use(helmet());
-// const limiter = rateLimit({
-//   windowMs: 15 * 60 * 1000, // 15 minutes
-//   max: process.env.NODE_ENV === 'production' ? 100 : 5000,
-//   message: "Too many requests from this IP, please try again later.",
-// });
-// app.use(limiter);
-
-// app.get("/health",(req,res)=>res.json({message:"working"}))
-// app.get("*",(req,res)=>res.json({message:"working"}))
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
+// General rate limit on all API routes
+app.use('/api', generalLimiter);
+
+// Tighter limits on auth endpoints
+app.use('/api/user/signup', authLimiter);
+app.use('/api/user/signin', authLimiter);
+app.use('/api/user/verifySignup', authLimiter);
+app.use('/api/user/profile/verify-otp', authLimiter);
+app.use('/api/user/profile/password/reset', authLimiter);
+app.use('/api/user/resendSignupOtp', otpLimiter);
+app.use('/api/user/profile/resend-reset-otp', otpLimiter);
+
 app.use("/api/user", userRoute);
 app.use("/api/scripts", scriptRoute);
 app.use("/api/books", bookRoute);
@@ -63,33 +65,27 @@ app.get("/api/health", (req, res) =>
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   })
-); //just to check the connected server is recent
-app.get("/", (req, res) => {
-  res.send("Server is running!");
-});
-app.use((req, res) => {
-  res.status(404).json({ error: "no route found" });
-});
+);
+
+app.get("/", (req, res) => res.send("Server is running!"));
+
+app.use((req, res) => res.status(404).json({ error: "no route found" }));
+
+// Centralized error handler — must be last
+app.use(errorHandler);
+
 async function start() {
   try {
     await connectDB();
     console.log(`database connected`);
-    const { server, io } = setupSocket(app);
+    const { server } = setupSocket(app);
     server.listen(PORT, () => {
       console.log(`server started at ${PORT}`);
-    }); //template litral string dynamic string not static string
+    });
   } catch (err) {
-    console.log(`error:${err}`);
+    console.error(`startup error: ${err}`);
+    process.exit(1);
   }
 }
 
 start();
-
-//routes
-// app.post("/api/v1/user/signupp", (req, res) => {
-//   console.log("TEMP SIGNUP HIT", req.method, req.url, "body:", req.body);
-//   return res.json({ ok: true });
-// });
-
-// Trigger nodemon restart
-// Trigger restart

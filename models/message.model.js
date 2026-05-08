@@ -19,4 +19,6 @@ const messageSchema = new mongoose.Schema({
     }
 });
 
+messageSchema.index({ senderId: 1, receiverId: 1, _id: -1 });
+
 export const Message = mongoose.model('Message', messageSchema);

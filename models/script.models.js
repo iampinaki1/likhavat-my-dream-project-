@@ -77,6 +77,9 @@ const scriptSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+scriptSchema.index({ author: 1, _id: -1 });
+scriptSchema.index({ visibility: 1, _id: -1 });
+scriptSchema.index({ author: 1, visibility: 1, _id: -1 });
 
 const Script = mongoose.model("Script", scriptSchema);
 export default Script

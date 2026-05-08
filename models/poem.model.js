@@ -26,4 +26,7 @@ const poemSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
+poemSchema.index({ author: 1, _id: -1 });
+poemSchema.index({ _id: -1 }); // feed pagination
+
 export const Poem = mongoose.model("Poem", poemSchema);

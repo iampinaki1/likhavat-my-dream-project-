@@ -21,15 +21,16 @@ import {
 } from "../controller/authController.js";
 import verifyUser from "../middlewires/auth.js";
 import upload from "../middlewires/multer.js";
+import { validate, signupSchema, signinSchema, verifyOtpSchema, changePasswordSchema } from "../middlewires/validate.js";
 
 const router = express.Router();
-router.route("/signup").post(signup);
-router.route("/verifySignup").post(verify_signup);
+router.route("/signup").post(validate(signupSchema), signup);
+router.route("/verifySignup").post(validate(verifyOtpSchema), verify_signup);
 router.route("/resendSignupOtp").post(resendSignupOtp);
-router.route("/signin").post(signin);
+router.route("/signin").post(validate(signinSchema), signin);
 router.route("/logout").get(verifyUser, logout);
-router.route("/profile/password/reset").post(changePassword);
-router.route("/profile/verify-otp").post(verify_newPassword);
+router.route("/profile/password/reset").post(validate(changePasswordSchema), changePassword);
+router.route("/profile/verify-otp").post(validate(verifyOtpSchema), verify_newPassword);
 router.route("/profile/resend-reset-otp").post(resendResetOtp);
 router.route("/profile/delete").post(verifyUser, deleteUser);
 router.route("/profile/add").post(verifyUser, upload.single("photo"), updateProfile);

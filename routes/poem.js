@@ -1,17 +1,14 @@
 import express from "express";
 import verifyUser from "../middlewires/auth.js";
+import { validate, createPoemSchema } from "../middlewires/validate.js";
 import {
-    createPoem,
-    getPoems,
-    getPoemById,
-    loadPoemsOfUser,
-    toggleLikePoem,
-    deletePoem
+    createPoem, getPoems, getPoemById,
+    loadPoemsOfUser, toggleLikePoem, deletePoem
 } from "../controller/poemController.js";
 
 const router = express.Router();
 
-router.post("/poem/create", verifyUser, createPoem);
+router.post("/poem/create", verifyUser, validate(createPoemSchema), createPoem);
 router.get("/poem", verifyUser, getPoems);
 router.get("/poem/user", verifyUser, loadPoemsOfUser);
 router.get("/poem/:id", verifyUser, getPoemById);

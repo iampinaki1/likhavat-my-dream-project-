@@ -48,4 +48,8 @@ const bookSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+bookSchema.index({ author: 1, _id: -1 });
+bookSchema.index({ visibility: 1, _id: -1 });
+bookSchema.index({ author: 1, visibility: 1, _id: -1 });
+
 export const Book = mongoose.model("Book", bookSchema);

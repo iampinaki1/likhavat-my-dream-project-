@@ -560,8 +560,8 @@ export const toggleLikeScript = async (req, res) => {
 };
 export const searchScriptById = async (req, res) => {
   try {
-    const { codee } = req.query; // script mongoose id entered by user//bad me nanoid
-    const code = new mongoose.Types.ObjectId(codee)
+    const { codee } = req.query;
+    const code = new mongoose.Types.ObjectId(codee);
     if (!code) {
       return res.status(400).json({ msg: "Script code is required" });
     }
@@ -579,12 +579,17 @@ export const searchScriptById = async (req, res) => {
       return res.status(404).json({ msg: "script not found" });
     }
 
-    res.json({
-      success: true,
-      script,
-    });
+    const userId = req.userId?.toString();
+    const authorId = (script.author?._id || script.author)?.toString();
+    const isAuthor = userId === authorId;
+    const isAllowed = (script.allowedUsers || []).some(u => (u._id || u)?.toString() === userId);
+
+    if (script.visibility === "restricted" && !isAuthor && !isAllowed) {
+      return res.status(403).json({ msg: "You do not have access to this script" });
+    }
+
+    res.json({ success: true, script });
   } catch (err) {
-    // Invalid ObjectId format error handled here
     res.status(500).json({ error: `Invalid :${err}` });
   }
 };
